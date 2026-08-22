@@ -1,0 +1,26 @@
+# Example: run an automation script on a schedule using GitHub Actions itself,
+# instead of (or in addition to) local APScheduler. Free for public repos,
+# generous minutes for private ones. Edit the cron and script path per task.
+name: Scheduled run
+
+on:
+  schedule:
+    - cron: "0 9 * * *"   # 9am UTC daily - adjust as needed
+  workflow_dispatch: {}    # allows manual trigger from the Actions tab too
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run script
+        env:
+          # Reference repo secrets here, e.g.:
+          # API_KEY: ${{ secrets.API_KEY }}
+          PLACEHOLDER: "set real env/secrets before using"
+        run: python scripts/your_script.py

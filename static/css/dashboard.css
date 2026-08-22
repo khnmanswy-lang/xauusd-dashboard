@@ -1,0 +1,703 @@
+/* ==========================================================================
+   Deep Dark Financial Terminal Design System - XAUUSD Dashboard
+   ========================================================================== */
+
+:root {
+  /* Surface & Backgrounds */
+  --bg-app: #0a0e17;            /* Deep obsidian background */
+  --bg-panel: #111722;          /* Card & container panels */
+  --bg-panel-header: #161f2e;   /* Panel headers & widget caps */
+  --border-subtle: #1e293b;     /* 1px structural borders */
+  --border-active: #334155;     /* Highlighted/focused borders */
+
+  /* Asset & Status Colors */
+  --gold-accent: #f0b90b;       /* Gold (XAUUSD) primary brand */
+  --gold-dim: #997819;          /* Secondary gold accents */
+  --gold-glow: rgba(240, 185, 11, 0.15);
+  --bullish-green: #00c076;     /* Bullish / Up ticks / Buys */
+  --bullish-bg: rgba(0, 192, 118, 0.12);
+  --bearish-red: #ff4d4f;       /* Bearish / Down ticks / Sells */
+  --bearish-bg: rgba(255, 77, 79, 0.12);
+  --neutral-gray: #64748b;      /* Neutral / Inactive states */
+  --alert-yellow: #fbbf24;      /* Warnings / News alerts */
+  --blue-accent: #38bdf8;       /* London session & VWAP */
+
+  /* Text & Typography */
+  --text-primary: #f8fafc;      /* Primary readable text */
+  --text-secondary: #94a3b8;    /* Labels & timestamps */
+  --text-muted: #475569;        /* Disabled & subtle hints */
+
+  /* Layout */
+  --header-height: 52px;
+  --panel-radius: 6px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  -webkit-font-smoothing: antialiased;
+}
+
+.num {
+  font-family: 'JetBrains Mono', 'Roboto Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.2px;
+}
+
+/* ==========================================================================
+   Header Ticker Bar
+   ========================================================================== */
+.header-bar {
+  height: var(--header-height);
+  background: var(--bg-panel-header);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  flex-shrink: 0;
+  z-index: 100;
+}
+
+.header-left, .header-center, .header-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.brand-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(240, 185, 11, 0.1);
+  border: 1px solid var(--gold-dim);
+  padding: 4px 10px;
+  border-radius: 4px;
+}
+
+.brand-icon {
+  font-size: 14px;
+  color: var(--gold-accent);
+}
+
+.brand-title {
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.5px;
+  color: var(--gold-accent);
+}
+
+.price-display {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.main-price {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  transition: color 0.15s ease;
+}
+
+.price-flash-up {
+  color: var(--bullish-green) !important;
+}
+
+.price-flash-down {
+  color: var(--bearish-red) !important;
+}
+
+.spread-tag {
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: var(--bg-panel);
+  padding: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--border-subtle);
+}
+
+.macro-tickers {
+  display: flex;
+  gap: 12px;
+}
+
+.ticker-chip {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-subtle);
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.ticker-label {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.ticker-val {
+  font-weight: 600;
+}
+
+.chip-up {
+  color: var(--bullish-green);
+}
+
+.chip-down {
+  color: var(--bearish-red);
+}
+
+.session-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.session-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.dot-asia { background-color: var(--gold-accent); box-shadow: 0 0 6px var(--gold-accent); }
+.dot-london { background-color: var(--blue-accent); box-shadow: 0 0 6px var(--blue-accent); }
+.dot-ny { background-color: var(--bullish-green); box-shadow: 0 0 6px var(--bullish-green); }
+.dot-closed { background-color: var(--neutral-gray); }
+
+.news-alert-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.news-alert-active {
+  background: var(--bearish-bg) !important;
+  border-color: var(--bearish-red) !important;
+  animation: pulse-border 1.5s infinite;
+}
+
+@keyframes pulse-border {
+  0% { box-shadow: 0 0 0 0 rgba(255, 77, 79, 0.4); }
+  70% { box-shadow: 0 0 0 6px rgba(255, 77, 79, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 77, 79, 0); }
+}
+
+.ws-status-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--bullish-green);
+}
+
+.ws-offline {
+  background: var(--bearish-red) !important;
+}
+
+/* ==========================================================================
+   3-Column Main Grid Layout
+   ========================================================================== */
+.main-layout {
+  display: grid;
+  grid-template-columns: 290px 1fr 310px;
+  height: calc(100vh - var(--header-height));
+  overflow: hidden;
+  background: var(--bg-app);
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  overflow-y: auto;
+}
+
+.column-left {
+  border-right: 1px solid var(--border-subtle);
+}
+
+.column-center {
+  padding: 8px 4px;
+  display: flex;
+  flex-direction: column;
+}
+
+.column-right {
+  border-left: 1px solid var(--border-subtle);
+}
+
+/* ==========================================================================
+   Panel Cards & Modules
+   ========================================================================== */
+.card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--panel-radius);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.card-header {
+  height: 32px;
+  background: var(--bg-panel-header);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-secondary);
+}
+
+.card-body {
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ==========================================================================
+   Left Column: Confluence Matrix & Volatility
+   ========================================================================== */
+.confluence-banner {
+  padding: 10px;
+  border-radius: 4px;
+  text-align: center;
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: 0.5px;
+}
+
+.banner-bullish {
+  background: var(--bullish-bg);
+  border: 1px solid var(--bullish-green);
+  color: var(--bullish-green);
+}
+
+.banner-bearish {
+  background: var(--bearish-bg);
+  border: 1px solid var(--bearish-red);
+  color: var(--bearish-red);
+}
+
+.banner-neutral {
+  background: rgba(100, 116, 139, 0.12);
+  border: 1px solid var(--neutral-gray);
+  color: var(--text-primary);
+}
+
+.tf-matrix-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tf-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--bg-app);
+  padding: 6px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border-subtle);
+  font-size: 11px;
+}
+
+.tf-tag {
+  font-weight: 700;
+  color: var(--gold-accent);
+}
+
+.tf-badge {
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.badge-bull {
+  background: var(--bullish-bg);
+  color: var(--bullish-green);
+}
+
+.badge-bear {
+  background: var(--bearish-bg);
+  color: var(--bearish-red);
+}
+
+.badge-neut {
+  background: rgba(100, 116, 139, 0.15);
+  color: var(--text-secondary);
+}
+
+/* Detailed Indicator Interpretation Matrix */
+.matrix-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.matrix-item {
+  background: var(--bg-app);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.matrix-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+}
+
+.matrix-label {
+  font-weight: 700;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.matrix-interp-text {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.35;
+}
+
+/* ADR Meter */
+.adr-meter-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.adr-bar-container {
+  width: 100%;
+  height: 8px;
+  background: var(--bg-app);
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+}
+
+.adr-bar-fill {
+  height: 100%;
+  width: 50%;
+  background: linear-gradient(90deg, var(--gold-accent), var(--alert-yellow));
+  transition: width 0.3s ease;
+}
+
+.adr-stats {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.atr-pills {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+
+.atr-pill {
+  background: var(--bg-app);
+  border: 1px solid var(--border-subtle);
+  padding: 4px 6px;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.atr-label {
+  font-size: 9px;
+  color: var(--text-muted);
+}
+
+.atr-val {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* Session Levels */
+.levels-table {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.level-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 8px;
+  background: var(--bg-app);
+  border-radius: 4px;
+  border: 1px solid var(--border-subtle);
+  font-size: 11px;
+}
+
+.level-name {
+  color: var(--text-secondary);
+}
+
+.level-val {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* ==========================================================================
+   Center Column: Interactive Lightweight Chart
+   ========================================================================== */
+.chart-container-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--panel-radius);
+  overflow: hidden;
+}
+
+.chart-toolbar {
+  height: 38px;
+  background: var(--bg-panel-header);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+}
+
+.tf-switch-group, .overlay-group {
+  display: flex;
+  gap: 4px;
+}
+
+.tf-btn, .overlay-btn {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tf-btn:hover, .overlay-btn:hover {
+  border-color: var(--border-active);
+  color: var(--text-primary);
+}
+
+.tf-btn.active {
+  background: var(--gold-accent);
+  color: #000;
+  border-color: var(--gold-accent);
+  font-weight: 700;
+}
+
+.overlay-btn.active {
+  background: rgba(56, 189, 248, 0.15);
+  color: var(--blue-accent);
+  border-color: var(--blue-accent);
+}
+
+#chart-canvas {
+  flex: 1;
+  width: 100%;
+  min-height: 350px;
+  position: relative;
+}
+
+.chart-ohlc-legend {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  z-index: 10;
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: rgba(10, 14, 23, 0.75);
+  backdrop-filter: blur(4px);
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px solid rgba(30, 41, 59, 0.6);
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ==========================================================================
+   Right Column: Execution, Lot Sizer, Alerts
+   ========================================================================== */
+.candle-timer-card {
+  text-align: center;
+  padding: 12px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--panel-radius);
+}
+
+.timer-digits {
+  font-size: 32px;
+  font-weight: 800;
+  color: var(--gold-accent);
+  letter-spacing: 1px;
+}
+
+.timer-sub {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+/* Risk Sizer Form */
+.risk-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.form-label-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.risk-input {
+  background: var(--bg-app);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  outline: none;
+}
+
+.risk-input:focus {
+  border-color: var(--gold-accent);
+}
+
+.lot-calc-result-box {
+  background: rgba(240, 185, 11, 0.08);
+  border: 1px solid var(--gold-accent);
+  border-radius: 4px;
+  padding: 10px;
+  text-align: center;
+}
+
+.lot-num-big {
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--gold-accent);
+}
+
+.lot-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  letter-spacing: 0.5px;
+}
+
+.rr-breakdown {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  font-size: 11px;
+}
+
+.rr-item {
+  background: var(--bg-app);
+  border: 1px solid var(--border-subtle);
+  padding: 4px 6px;
+  border-radius: 4px;
+  display: flex;
+  justify-content: space-between;
+}
+
+/* Alert Feed */
+.alert-feed-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.alert-item {
+  background: var(--bg-app);
+  border-left: 3px solid var(--gold-accent);
+  padding: 6px 8px;
+  border-radius: 0 4px 4px 0;
+  font-size: 11px;
+}
+
+.alert-item-sweep {
+  border-left-color: var(--bullish-green);
+}
+
+.alert-item-news {
+  border-left-color: var(--alert-yellow);
+}
+
+.alert-time {
+  font-size: 9px;
+  color: var(--text-muted);
+}
+
+.alert-msg {
+  color: var(--text-primary);
+  margin-top: 2px;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-app);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-active);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--neutral-gray);
+}

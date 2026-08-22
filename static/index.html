@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>XAUUSD Multi-Timeframe Terminal</title>
+  <link rel="stylesheet" href="/static/css/dashboard.css">
+  <!-- TradingView Lightweight Charts v4 -->
+  <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+
+  <!-- TOP HEADER BAR -->
+  <header class="header-bar">
+    <div class="header-left">
+      <div class="brand-badge">
+        <span class="brand-icon">⚡</span>
+        <span class="brand-title">XAUUSD TERMINAL</span>
+      </div>
+
+      <div class="price-display">
+        <span id="xauusd-price" class="main-price num">--.--</span>
+        <span class="spread-tag">Spread: <span id="xauusd-spread" class="num">0.20</span></span>
+      </div>
+    </div>
+
+    <div class="header-center">
+      <div class="macro-tickers">
+        <div class="ticker-chip">
+          <span class="ticker-label">DXY</span>
+          <span id="dxy-val" class="ticker-val num">104.25</span>
+          <span id="dxy-chg" class="num chip-down">-0.12%</span>
+        </div>
+        <div class="ticker-chip">
+          <span class="ticker-label">US10Y</span>
+          <span id="us10y-val" class="ticker-val num">4.22%</span>
+          <span id="us10y-chg" class="num chip-up">+0.05%</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="header-right">
+      <div id="tz-badge" class="ticker-chip" title="User Local Timezone">
+        <span>🌐</span>
+        <span id="tz-label" class="num" style="color: var(--text-primary); font-weight: 600;">UTC+8</span>
+      </div>
+
+      <div class="session-chip">
+        <span id="session-dot" class="session-dot dot-london"></span>
+        <span id="session-label" style="font-weight: 700;">LONDON</span>
+        <span id="killzone-label" style="color: var(--text-secondary); font-size: 11px;">[LONDON_OPEN]</span>
+      </div>
+
+      <div id="news-chip" class="news-alert-chip">
+        <span>⏱️</span>
+        <span id="news-name">US Core CPI</span>
+        <span id="news-timer" class="num" style="font-weight: 700;">03:15:00</span>
+      </div>
+
+      <div id="ws-indicator" class="ws-status-indicator" title="WebSocket Connected"></div>
+    </div>
+  </header>
+
+  <!-- 3-COLUMN MAIN DASHBOARD -->
+  <main class="main-layout">
+
+    <!-- LEFT COLUMN: CONFLUENCE & QUANTITATIVE MATRIX -->
+    <aside class="column column-left">
+      <!-- Confluence Score Card -->
+      <div class="card">
+        <div class="card-header">
+          <span>MTF Confluence Bias</span>
+        </div>
+        <div class="card-body">
+          <div id="overall-confluence-banner" class="confluence-banner banner-bullish">
+            +3 BULLISH CONFLUENCE
+          </div>
+
+          <div class="tf-matrix-grid">
+            <div class="tf-row">
+              <span class="tf-tag">H1 Macro</span>
+              <span id="h1-badge" class="tf-badge badge-bull">BULLISH (> 200 EMA)</span>
+            </div>
+            <div class="tf-row">
+              <span class="tf-tag">M15 Structure</span>
+              <span id="m15-badge" class="tf-badge badge-bull">BULLISH_VWAP</span>
+            </div>
+            <div class="tf-row">
+              <span class="tf-tag">M5 Execution</span>
+              <span id="m5-badge" class="tf-badge badge-bull">BUY TRIGGER</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quantitative Indicator Matrix with Tactical Interpretations -->
+      <div class="card" style="flex: 1;">
+        <div class="card-header">
+          <span>Indicator Matrix & Analysis</span>
+        </div>
+        <div class="card-body">
+          <div class="matrix-card-list">
+            
+            <!-- 1. Session VWAP Value Benchmark -->
+            <div class="matrix-item">
+              <div class="matrix-item-header">
+                <span class="matrix-label">📈 Session VWAP: <span id="matrix-vwap-val" class="num" style="color: var(--blue-accent); font-weight: 700;">--</span></span>
+                <span id="matrix-vwap-badge" class="tf-badge badge-bull">ABOVE VALUE</span>
+              </div>
+              <p id="matrix-vwap-interp" class="matrix-interp-text">Loading VWAP profile...</p>
+            </div>
+
+            <!-- 2. RSI & Momentum Divergence -->
+            <div class="matrix-item">
+              <div class="matrix-item-header">
+                <span class="matrix-label">⚡ RSI (14): <span id="matrix-rsi-val" class="num" style="color: var(--text-primary); font-weight: 700;">--</span></span>
+                <span id="matrix-rsi-badge" class="tf-badge badge-neut">NEUTRAL</span>
+              </div>
+              <p id="matrix-rsi-interp" class="matrix-interp-text">Evaluating momentum regime...</p>
+            </div>
+
+            <!-- 3. Trend Moving Averages (EMA 50 / 200) -->
+            <div class="matrix-item">
+              <div class="matrix-item-header">
+                <span class="matrix-label">📊 Moving Average Trend</span>
+                <span id="matrix-ema-badge" class="tf-badge badge-bull">BULLISH STACK</span>
+              </div>
+              <p id="matrix-ema-interp" class="matrix-interp-text">Price alignment against EMA 50 & EMA 200.</p>
+            </div>
+
+            <!-- 4. Session Liquidity & Sweeps -->
+            <div class="matrix-item">
+              <div class="matrix-item-header">
+                <span class="matrix-label">🎯 Session Liquidity</span>
+                <span id="matrix-sweep-badge" class="tf-badge badge-neut">MONITORING</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; font-size: 10px; color: var(--text-muted); margin-bottom: 2px;">
+                <span>Asia High: <span id="level-asia-high" class="num" style="color: var(--text-primary);">--</span></span>
+                <span>Asia Low: <span id="level-asia-low" class="num" style="color: var(--text-primary);">--</span></span>
+              </div>
+              <p id="matrix-sweep-interp" class="matrix-interp-text">Tracking Asian Range sweeps and liquidity pools.</p>
+            </div>
+
+            <!-- 5. Average Daily Range (ADR) -->
+            <div class="matrix-item">
+              <div class="matrix-item-header">
+                <span class="matrix-label">⏳ Daily Range Capacity</span>
+                <span id="adr-pct-tag" class="num" style="color: var(--gold-accent); font-weight: 700;">54%</span>
+              </div>
+              <div class="adr-meter-wrapper" style="margin: 4px 0;">
+                <div class="adr-bar-container">
+                  <div id="adr-bar-fill" class="adr-bar-fill" style="width: 54%;"></div>
+                </div>
+                <div class="adr-stats" style="font-size: 10px;">
+                  <span>Used: $<span id="adr-used" class="num">--</span></span>
+                  <span>Total ADR: $<span id="adr-total" class="num">--</span></span>
+                </div>
+              </div>
+              <p id="matrix-adr-interp" class="matrix-interp-text">Daily range room for session expansion.</p>
+            </div>
+
+            <!-- 6. Fair Value Gaps (FVG) Imbalance -->
+            <div class="matrix-item">
+              <div class="matrix-item-header">
+                <span class="matrix-label">🧲 M5 Imbalance (FVG)</span>
+              </div>
+              <p id="matrix-fvg-interp" class="matrix-interp-text">No active unmitigated FVG nearby.</p>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- CENTER COLUMN: CLEAN INTERACTIVE CHART (EMA 50 + EMA 200 ONLY) -->
+    <section class="column column-center">
+      <div class="chart-container-card">
+        <div class="chart-toolbar">
+          <div class="tf-switch-group">
+            <button class="tf-btn" data-tf="H1">H1</button>
+            <button class="tf-btn" data-tf="M15">M15</button>
+            <button class="tf-btn active" data-tf="M5">M5</button>
+            <button class="tf-btn" data-tf="M1">M1</button>
+          </div>
+
+          <div class="overlay-group">
+            <button id="toggle-ema50" class="overlay-btn active" style="color: #f0b90b; border-color: rgba(240, 185, 11, 0.5);">EMA 50</button>
+            <button id="toggle-ema200" class="overlay-btn active" style="color: #38bdf8; border-color: rgba(56, 189, 248, 0.5);">EMA 200</button>
+          </div>
+        </div>
+
+        <div id="chart-canvas"></div>
+      </div>
+    </section>
+
+    <!-- RIGHT COLUMN: EXECUTION & LOT CALCULATOR -->
+    <aside class="column column-right">
+      <!-- M5 Candle Countdown Clock -->
+      <div class="candle-timer-card">
+        <div id="m5-timer-display" class="timer-digits num">02:45</div>
+        <div class="timer-sub">M5 CANDLE COUNTDOWN</div>
+      </div>
+
+      <!-- Dynamic Risk & Lot Calculator -->
+      <div class="card">
+        <div class="card-header">
+          <span>ATR Dynamic Lot Sizer</span>
+        </div>
+        <div class="card-body">
+          <div class="risk-form-group">
+            <div class="form-label-row">
+              <span>Account Balance ($)</span>
+            </div>
+            <input type="number" id="calc-balance" class="risk-input num" value="10000" step="500">
+          </div>
+
+          <div class="risk-form-group">
+            <div class="form-label-row">
+              <span>Risk Per Trade (%)</span>
+              <span id="calc-risk-display" class="num" style="color: var(--gold-accent); font-weight: 700;">1.0%</span>
+            </div>
+            <input type="range" id="calc-risk-slider" min="0.25" max="5.0" step="0.25" value="1.0" style="width: 100%; accent-color: var(--gold-accent);">
+          </div>
+
+          <div class="risk-form-group">
+            <div class="form-label-row">
+              <span>Stop Loss Multiplier (x ATR)</span>
+              <span id="calc-sl-display" class="num">1.5x</span>
+            </div>
+            <input type="range" id="calc-sl-slider" min="1.0" max="3.0" step="0.5" value="1.5" style="width: 100%; accent-color: var(--gold-accent);">
+          </div>
+
+          <div class="lot-calc-result-box">
+            <div class="lot-label">Recommended Lot Size</div>
+            <div id="calculated-lot-size" class="lot-num-big num">0.35</div>
+            <div style="font-size: 11px; color: var(--text-secondary); margin-top: 4px;">
+              Risk: $<span id="calc-risk-dollars" class="num">100.00</span> | SL Dist: $<span id="calc-sl-distance" class="num">2.85</span>
+            </div>
+          </div>
+
+          <div class="rr-breakdown">
+            <div class="rr-item">
+              <span style="color: var(--bearish-red);">SL (Long):</span>
+              <span id="calc-sl-price" class="num">$2,932.65</span>
+            </div>
+            <div class="rr-item">
+              <span style="color: var(--bullish-green);">TP 1:2:</span>
+              <span id="calc-tp2-price" class="num">$2,941.20</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Real-Time Alerts Feed -->
+      <div class="card" style="flex: 1;">
+        <div class="card-header">
+          <span>Live Signal & Event Feed</span>
+          <span style="font-size: 9px; color: var(--text-muted);">AUTO-STREAM</span>
+        </div>
+        <div class="card-body" style="padding: 6px;">
+          <div id="alert-feed-list" class="alert-feed-list">
+            <div class="alert-item alert-item-sweep">
+              <div class="alert-time num">SYSTEM READY</div>
+              <div class="alert-msg">Dashboard connected to low-latency market stream.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+  </main>
+
+  <script src="/static/js/chart.js"></script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
