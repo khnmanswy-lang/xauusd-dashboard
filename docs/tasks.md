@@ -5,10 +5,11 @@ Step states: `planned` -> `built` -> `tested` -> `committed`, or `BLOCKED: <reas
 Once every step for a feature is `committed`, run the `master-test` skill for a full system/e2e readiness check (not acceptance testing - that's the user's call) before moving the feature to Done.
 
 ## Session handoff
-- **Last session ended:** 2026-08-22 (Subtle EMA 50 & EMA 200 Styling Completed)
-- **In progress:** None (EMAs toned down to thin 1px lines with soft opacity so candlesticks remain the dominant visual focus)
-- **Next action:** Hard refresh browser at `http://127.0.0.1:8000` to inspect the clean, subtle EMA lines on the chart.
-- **Architectural spec:** Full specifications, data schemas, and UI designs are documented in `docs/architecture.md` and `docs/design.md`.
+- **Last session ended:** 2026-08-22 (GitHub Repository & UI Screenshot Published)
+- **GitHub Repository:** [https://github.com/khnmanswy-lang/xauusd-dashboard](https://github.com/khnmanswy-lang/xauusd-dashboard)
+- **Pushed Components:** Backend engine, indicators matrix, structure detector, TradingView chart, test suite (28/28 passing), and UI vector screenshot.
+- **In progress:** None
+- **Next action:** View the public repository on GitHub at [https://github.com/khnmanswy-lang/xauusd-dashboard](https://github.com/khnmanswy-lang/xauusd-dashboard).
 
 ---
 
