@@ -23,6 +23,26 @@ def test_api_state(client):
     assert "volatility" in data
     assert "session" in data
     assert "news" in data
+    assert "setup_scan" in data
+    assert "ai_analysis" in data
+    assert "headline" in data["ai_analysis"]
+
+
+def test_api_ai_endpoints(client):
+    # Test GET /api/ai/latest
+    res_get = client.get("/api/ai/latest")
+    assert res_get.status_code == 200
+    latest = res_get.json()
+    assert "headline" in latest
+    assert "setup_grade" in latest
+    assert "execution_plan" in latest
+
+    # Test POST /api/ai/analyze (on-demand re-scan)
+    res_post = client.post("/api/ai/analyze")
+    assert res_post.status_code == 200
+    new_analysis = res_post.json()
+    assert "headline" in new_analysis
+    assert "confidence_score" in new_analysis
 
 
 def test_api_history(client):

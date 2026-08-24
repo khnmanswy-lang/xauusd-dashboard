@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Dict, List, Set, Any, Optional
 
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -21,6 +22,8 @@ from src.core.risk_calculator import calculate_lot_size
 from src.integrations.market_data import MarketDataEngine
 from src.integrations.macro_feed import MacroFeed
 from src.integrations.economic_calendar import EconomicCalendar
+from src.integrations.ai_client import AiClient
+from src.core.ai_analyzer import AiSetupAnalyzer
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("server")
@@ -33,6 +36,9 @@ STATIC_DIR = BASE_DIR / "static"
 macro_feed = MacroFeed(poll_interval=settings.macro.poll_interval_seconds)
 economic_calendar = EconomicCalendar()
 market_engine = MarketDataEngine(macro_feed=macro_feed, calendar=economic_calendar)
+ai_client = AiClient()
+ai_analyzer = AiSetupAnalyzer(market_engine=market_engine, ai_client=ai_client)
+scheduler = AsyncIOScheduler()
 
 
 class ConnectionManager:
@@ -80,11 +86,38 @@ async def lifespan(app: FastAPI):
     async def _on_market_update(state: Dict[str, Any]):
         await manager.broadcast(state)
 
+    # Wire AI analyzer listener to WebSocket manager
+    async def _on_ai_update(payload: Dict[str, Any]):
+        await manager.broadcast(payload)
+
     market_engine.add_listener(_on_market_update)
+    ai_analyzer.add_listener(_on_ai_update)
+
+    # Run initial AI market evaluation pass
+    try:
+        await ai_analyzer.evaluate_market()
+    except Exception as e:
+        logger.debug("Initial AI evaluation pass: %s", e)
+
+    # Start 60-second / 1-minute background cron scanner
+    scheduler.add_job(
+        ai_analyzer.evaluate_market,
+        trigger="interval",
+        seconds=settings.ai.scanner_interval_seconds,
+        id="ai_market_evaluator",
+        replace_existing=True
+    )
+    scheduler.start()
+    logger.info("APScheduler started: AI market evaluation running every %ds.", settings.ai.scanner_interval_seconds)
 
     yield
 
-    logger.info("Shutting down XAUUSD Dashboard engine...")
+    logger.info("Shutting down XAUUSD Dashboard engine & scheduler...")
+    try:
+        scheduler.shutdown(wait=False)
+    except Exception:
+        pass
+    ai_analyzer.remove_listener(_on_ai_update)
     market_engine.remove_listener(_on_market_update)
     await market_engine.stop()
 
@@ -118,8 +151,22 @@ class RiskCalculateRequest(BaseModel):
 # REST Routes
 @app.get("/api/state")
 async def get_state() -> Dict[str, Any]:
-    """Returns a full real-time state snapshot."""
-    return market_engine.get_state_frame()
+    """Returns a full real-time state snapshot including latest AI trade plan."""
+    frame = market_engine.get_state_frame()
+    frame["ai_analysis"] = ai_analyzer.get_latest_analysis()
+    return frame
+
+
+@app.get("/api/ai/latest")
+async def get_ai_latest() -> Dict[str, Any]:
+    """Returns the latest AI trade setup analysis and reasoning card."""
+    return ai_analyzer.get_latest_analysis()
+
+
+@app.post("/api/ai/analyze")
+async def post_trigger_ai_analysis() -> Dict[str, Any]:
+    """Triggers an immediate on-demand market evaluation pass and broadcasts the result."""
+    return await ai_analyzer.evaluate_market()
 
 
 @app.get("/api/history/{timeframe}")
@@ -154,19 +201,25 @@ async def post_calculate_risk(req: RiskCalculateRequest) -> Dict[str, Any]:
 # WebSocket Stream Route
 @app.websocket("/ws/stream")
 async def websocket_stream(websocket: WebSocket):
-    """Low-latency WebSocket endpoint streaming continuous tick and state updates."""
+    """Low-latency WebSocket endpoint streaming continuous tick, state, and AI updates."""
     await manager.connect(websocket)
     try:
-        # Send initial snapshot immediately upon connection
+        # Send initial snapshot immediately upon connection (including AI analysis card)
         initial_state = market_engine.get_state_frame()
+        initial_state["ai_analysis"] = ai_analyzer.get_latest_analysis()
         await websocket.send_text(json.dumps(initial_state))
 
-        # Keep listening for incoming client messages (e.g. ping or client settings)
+        # Keep listening for incoming client messages (e.g. ping or on-demand re-scan request)
         while True:
             data = await websocket.receive_text()
-            # Handle client heartbeats or custom client commands if needed
             if data == "ping":
                 await websocket.send_text(json.dumps({"type": "pong"}))
+            elif data == "request_ai_analysis":
+                analysis = await ai_analyzer.evaluate_market()
+                await websocket.send_text(json.dumps({
+                    "type": "AI_ANALYSIS_UPDATE",
+                    "data": analysis
+                }))
     except WebSocketDisconnect:
         manager.disconnect(websocket)
     except Exception as e:
