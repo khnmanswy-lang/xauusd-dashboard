@@ -47,6 +47,12 @@
   * Active Session tag with pulse indicator (Asia: 🟡, London: 🔵, New York: 🟢).
   * High-Impact News countdown with warning badge if $< 15\text{m}$.
 * **Main Canvas (3-column responsive grid):**
-  * **Left Column (280px):** Multi-Timeframe Confluence Matrix & ADR Progress Meter.
-  * **Center Column (Flex 1):** TradingView Lightweight Chart canvas with timeframe buttons (H1, M15, M5) and overlay toggles.
-  * **Right Column (300px):** M5 Candle Countdown circular/digital gauge, Dynamic Lot Calculator, Real-Time Alert Log.
+  * **Left Column (300px - Indicators & Market State):** Multi-Timeframe Confluence Matrix, Session VWAP levels, EMAs, RSI Divergence badges, ADR Progress Meter, Session Highs/Lows.
+  * **Center Column (Flex 1 - Interactive Chart):** TradingView Lightweight Chart canvas with timeframe switcher (H1, M15, M5), automated FVG boxes (green/red semi-transparent fill), Asian Range high/low shading, and Session VWAP bands.
+  * **Right Column (340px - AI Analysis & Trade Plan):**
+    * **AI Setup Card:** Setup Grade Pill (`GRADE_A` 🟢, `GRADE_B` 🟡), Confidence % meter.
+    * **AI Thesis & Commentary:** Markdown container with crisp monospace trade notes.
+    * **Actionable Execution Card:** Entry, SL, TP1, TP2, RR values in prominent monospace tiles.
+    * **Dynamic Lot Sizer:** Reactive lot size calculator linked to account equity and live ATR.
+    * **Timer & Alert Feed:** M5 candle close countdown gauge and live structure alert log.
+

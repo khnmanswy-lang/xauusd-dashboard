@@ -37,18 +37,25 @@ from src.core.structure import (
 )
 from src.integrations.macro_feed import MacroFeed
 from src.integrations.economic_calendar import EconomicCalendar
+from src.integrations.oanda_client import OandaClient
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_BASE_PRICE = 4590.00
+DEFAULT_BASE_PRICE = 2935.00
 
 
 class MarketDataEngine:
     """Coordinates real-time price feeds, candle resampling, and analysis frame broadcasting."""
 
-    def __init__(self, macro_feed: Optional[MacroFeed] = None, calendar: Optional[EconomicCalendar] = None):
+    def __init__(
+        self,
+        macro_feed: Optional[MacroFeed] = None,
+        calendar: Optional[EconomicCalendar] = None,
+        oanda_client: Optional[OandaClient] = None
+    ):
         self.macro_feed = macro_feed or MacroFeed()
         self.calendar = calendar or EconomicCalendar()
+        self.oanda_client = oanda_client or OandaClient()
 
         # Rolling raw 1m candle history (stored as list of Candle objects)
         self._m1_candles: List[Candle] = []
@@ -426,7 +433,15 @@ class MarketDataEngine:
             }
         }
 
-    def process_tick(self, price: float, volume: float = 1.0, timestamp: Optional[int] = None):
+    def process_tick(
+        self,
+        price: float,
+        volume: float = 1.0,
+        timestamp: Optional[int] = None,
+        spread: Optional[float] = None,
+        bid: Optional[float] = None,
+        ask: Optional[float] = None
+    ):
         """Process incoming live price tick and update M1 candle."""
         if price <= 0:
             return
@@ -439,9 +454,15 @@ class MarketDataEngine:
         minute_ts = now_ts - (now_ts % 60)
 
         self._current_price = round(price, 2)
-        self._spread = round(random.uniform(0.15, 0.25), 2)
-        self._bid = round(self._current_price - (self._spread / 2.0), 2)
-        self._ask = round(self._current_price + (self._spread / 2.0), 2)
+        if spread is not None:
+            self._spread = round(spread, 2)
+        elif bid is not None and ask is not None:
+            self._spread = round(ask - bid, 2)
+        else:
+            self._spread = round(random.uniform(0.15, 0.25), 2)
+
+        self._bid = round(bid if bid is not None else self._current_price - (self._spread / 2.0), 2)
+        self._ask = round(ask if ask is not None else self._current_price + (self._spread / 2.0), 2)
 
         if not self._m1_candles or self._m1_candles[-1].timestamp < minute_ts:
             new_candle = Candle(
@@ -546,23 +567,54 @@ class MarketDataEngine:
             except Exception as e:
                 logger.debug("Error notifying listener: %s", e)
 
+    def _on_oanda_price_tick(self, price: float, bid: float, ask: float, timestamp: int):
+        """Handler for real-time OANDA v20 price stream ticks."""
+        self._bid = round(bid, 2)
+        self._ask = round(ask, 2)
+        self._spread = round(ask - bid, 2)
+        self.process_tick(price, volume=1.0, timestamp=timestamp, spread=self._spread, bid=self._bid, ask=self._ask)
+        asyncio.create_task(self._notify_listeners())
+
     async def start(self):
         """Start live stream and simulation tick loop."""
         self._running = True
         await self.macro_feed.start()
         
-        try:
-            await self._fetch_real_klines()
-        except Exception as e:
-            logger.debug("Kline warm-up fetch: %s", e)
+        # 1. Check if OANDA v20 practice/live is configured
+        oanda_active = False
+        if self.oanda_client.is_configured():
+            try:
+                candles = await self.oanda_client.fetch_candles(granularity="M1", count=1000)
+                if candles and len(candles) >= 30:
+                    self._m1_candles = candles
+                    self._current_price = round(candles[-1].close, 2)
+                    self._bid = round(self._current_price - 0.10, 2)
+                    self._ask = round(self._current_price + 0.10, 2)
+                    self._seed_daily_history(self._current_price)
+                    self._recompute_all()
+                    logger.info("Successfully primed %d candles from OANDA v20", len(candles))
+                
+                await self.oanda_client.start_pricing_stream(self._on_oanda_price_tick)
+                oanda_active = True
+            except Exception as e:
+                logger.warning("Failed starting OANDA stream, falling back to public feed: %s", e)
 
-        self._stream_task = asyncio.create_task(self._binance_ws_loop())
+        # 2. Fallback to public Binance spot proxy / simulation if OANDA is not active
+        if not oanda_active:
+            try:
+                await self._fetch_real_klines()
+            except Exception as e:
+                logger.debug("Kline warm-up fetch: %s", e)
+
+            self._stream_task = asyncio.create_task(self._binance_ws_loop())
+
         self._tick_interval_task = asyncio.create_task(self._tick_emitter_loop())
 
     async def stop(self):
         """Stop background tasks."""
         self._running = False
         await self.macro_feed.stop()
+        await self.oanda_client.stop()
         if self._stream_task and not self._stream_task.done():
             self._stream_task.cancel()
         if self._tick_interval_task and not self._tick_interval_task.done():

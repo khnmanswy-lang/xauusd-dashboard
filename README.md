@@ -2,7 +2,7 @@
 
 A high-performance, real-time trading terminal designed specifically for **XAUUSD (Gold)** multi-timeframe analysis across **H1 (Macro Bias)**, **M15 (Structure & Momentum)**, and **M5 (Execution & Liquidity Triggers)**.
 
-![XAUUSD Trading Terminal Screenshot](docs/assets/dashboard_screenshot.jpg)
+![XAUUSD Trading Terminal Screenshot](docs/assets/dashboard_screenshot.svg)
 
 ## Key Features
 
