@@ -10,6 +10,8 @@ def test_serve_index_html():
         response = client.get("/")
         assert response.status_code == 200
         assert "XAUUSD TERMINAL" in response.text
+        assert "AI SETUP SCANNER" in response.text
+        assert "btn-rescan-ai" in response.text
         assert "chart.js" in response.text
         assert "app.js" in response.text
 
@@ -20,6 +22,8 @@ def test_serve_css():
         assert response.status_code == 200
         assert "--bg-app" in response.text
         assert "--gold-accent" in response.text
+        assert ".ai-card" in response.text
+        assert ".btn-rescan" in response.text
 
 
 def test_serve_js():
@@ -31,3 +35,4 @@ def test_serve_js():
         res_app = client.get("/static/js/app.js")
         assert res_app.status_code == 200
         assert "connectWebSocket" in res_app.text
+        assert "renderAiAnalysis" in res_app.text

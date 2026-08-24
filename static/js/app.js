@@ -73,9 +73,21 @@ document.addEventListener('DOMContentLoaded', () => {
   const elAdrTotal = document.getElementById('adr-total');
   const elMatrixAdrInterp = document.getElementById('matrix-adr-interp');
 
-  const elMatrixFvgInterp = document.getElementById('matrix-fvg-interp');
+  // DOM Elements - Right Column: AI Setup Scanner & Lot Calculator
+  const elBtnRescanAi = document.getElementById('btn-rescan-ai');
+  const elBtnApplyAiRisk = document.getElementById('btn-apply-ai-risk');
+  const elAiGradeBadge = document.getElementById('ai-grade-badge');
+  const elAiConfidenceBadge = document.getElementById('ai-confidence-badge');
+  const elAiHeadline = document.getElementById('ai-headline');
+  const elAiThesis = document.getElementById('ai-thesis');
+  const elAiBreakdownList = document.getElementById('ai-breakdown-list');
+  const elAiEntryPrice = document.getElementById('ai-entry-price');
+  const elAiSlPrice = document.getElementById('ai-sl-price');
+  const elAiTp1Price = document.getElementById('ai-tp1-price');
+  const elAiTp2Price = document.getElementById('ai-tp2-price');
+  const elAiInvalidationText = document.getElementById('ai-invalidation-text');
+  const elAiPsychologyText = document.getElementById('ai-psychology-text');
 
-  // DOM Elements - Right Column
   const elM5TimerDisplay = document.getElementById('m5-timer-display');
   const elCalcBalance = document.getElementById('calc-balance');
   const elCalcRiskSlider = document.getElementById('calc-risk-slider');
@@ -88,6 +100,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const elCalcSlPrice = document.getElementById('calc-sl-price');
   const elCalcTp2Price = document.getElementById('calc-tp2-price');
   const elAlertFeedList = document.getElementById('alert-feed-list');
+
+  let latestAiAnalysis = null;
+  let customAiSlDistance = null;
 
   // ==========================================================================
   // WebSocket Client
@@ -108,10 +123,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     ws.onmessage = (event) => {
       try {
-        const state = JSON.parse(event.data);
-        if (state.type === 'pong') return;
-        latestState = state;
-        renderState(state);
+        const message = JSON.parse(event.data);
+        if (message.type === 'pong') return;
+
+        if (message.type === 'AI_ANALYSIS_UPDATE') {
+          renderAiAnalysis(message.data);
+          addAlert(`AI Setup Updated: [${message.data.setup_grade}] ${message.data.headline}`, 'sweep');
+          return;
+        }
+
+        latestState = message;
+        renderState(message);
       } catch (e) {
         console.error("Error parsing WS state:", e);
       }
@@ -286,8 +308,60 @@ document.addEventListener('DOMContentLoaded', () => {
     // 9. Update M5 Timer
     m5SecondsRemaining = gold.candle_timer_m5 || 300;
 
-    // 10. Recalculate Dynamic Lot Sizer
+    // 10. Update AI Analysis Card if present
+    if (state.ai_analysis) {
+      renderAiAnalysis(state.ai_analysis);
+    }
+
+    // 11. Recalculate Dynamic Lot Sizer
     recalculateLotSize();
+  }
+
+  // ==========================================================================
+  // AI Setup Analysis Renderer
+  // ==========================================================================
+  function renderAiAnalysis(aiData) {
+    if (!aiData) return;
+    latestAiAnalysis = aiData;
+
+    // 1. Grade Badge
+    const grade = aiData.setup_grade || 'NO_SETUP';
+    const dir = aiData.direction || 'NEUTRAL';
+    if (elAiGradeBadge) {
+      elAiGradeBadge.textContent = `${grade.replace('_', ' ')} ${dir === 'BULLISH_LONG' ? 'LONG' : (dir === 'BEARISH_SHORT' ? 'SHORT' : '')}`.trim();
+      elAiGradeBadge.className = `tf-badge ${grade === 'GRADE_A' ? 'badge-bull' : (grade === 'GRADE_B' ? 'badge-neut' : 'badge-neut')}`;
+    }
+
+    // 2. Confidence Tag
+    if (elAiConfidenceBadge) {
+      const conf = Math.round((aiData.confidence_score || 0.0) * 100);
+      elAiConfidenceBadge.textContent = `${conf}%`;
+    }
+
+    // 3. Headline & Thesis
+    if (elAiHeadline) elAiHeadline.textContent = aiData.headline || 'Analyzing market structure...';
+    if (elAiThesis) elAiThesis.textContent = aiData.thesis || '';
+
+    // 4. Breakdown Bullets
+    if (elAiBreakdownList && Array.isArray(aiData.order_flow_breakdown)) {
+      elAiBreakdownList.innerHTML = '';
+      aiData.order_flow_breakdown.forEach(item => {
+        const li = document.createElement('li');
+        li.textContent = item;
+        elAiBreakdownList.appendChild(li);
+      });
+    }
+
+    // 5. Actionable Execution Levels
+    const exec = aiData.execution_plan || {};
+    if (elAiEntryPrice) elAiEntryPrice.textContent = exec.entry ? `$${exec.entry.toFixed(2)}` : '--';
+    if (elAiSlPrice) elAiSlPrice.textContent = exec.stop_loss ? `$${exec.stop_loss.toFixed(2)}` : '--';
+    if (elAiTp1Price) elAiTp1Price.textContent = exec.take_profit_1 ? `$${exec.take_profit_1.toFixed(2)}` : '--';
+    if (elAiTp2Price) elAiTp2Price.textContent = exec.take_profit_2 ? `$${exec.take_profit_2.toFixed(2)}` : '--';
+
+    // 6. Invalidation & Psychology Callouts
+    if (elAiInvalidationText) elAiInvalidationText.textContent = exec.invalidation || 'Awaiting setup confirmation.';
+    if (elAiPsychologyText) elAiPsychologyText.textContent = aiData.psychology_warning || 'Maintain strict 1% risk discipline.';
   }
 
   // ==========================================================================
@@ -302,10 +376,10 @@ document.addEventListener('DOMContentLoaded', () => {
     elCalcSlDisplay.textContent = `${slMult.toFixed(1)}x`;
 
     const atrM5 = (latestState && latestState.volatility && latestState.volatility.atr_m5) ? latestState.volatility.atr_m5 : 2.20;
-    const currentPrice = (latestState && latestState.xauusd) ? latestState.xauusd.price : 4590.0;
+    const currentPrice = (latestState && latestState.xauusd) ? latestState.xauusd.price : 2935.0;
 
     const riskAmount = balance * (riskPct / 100.0);
-    const slDistance = Math.max(0.20, atrM5 * slMult);
+    const slDistance = customAiSlDistance || Math.max(0.20, atrM5 * slMult);
     const calculatedLots = Math.max(0.01, roundNum(riskAmount / (slDistance * 100.0), 2));
 
     elCalculatedLot.textContent = calculatedLots.toFixed(2);
@@ -319,10 +393,59 @@ document.addEventListener('DOMContentLoaded', () => {
     elCalcTp2Price.textContent = `$${tp2Price.toFixed(2)}`;
   }
 
-  // Bind calculator inputs
-  elCalcBalance.addEventListener('input', recalculateLotSize);
-  elCalcRiskSlider.addEventListener('input', recalculateLotSize);
-  elCalcSlSlider.addEventListener('input', recalculateLotSize);
+  // Bind calculator inputs & buttons
+  elCalcBalance.addEventListener('input', () => { customAiSlDistance = null; recalculateLotSize(); });
+  elCalcRiskSlider.addEventListener('input', () => { recalculateLotSize(); });
+  elCalcSlSlider.addEventListener('input', () => { customAiSlDistance = null; recalculateLotSize(); });
+
+  if (elBtnApplyAiRisk) {
+    elBtnApplyAiRisk.addEventListener('click', () => {
+      if (latestAiAnalysis && latestAiAnalysis.execution_plan) {
+        const exec = latestAiAnalysis.execution_plan;
+        if (exec.entry && exec.stop_loss) {
+          const dist = Math.abs(exec.entry - exec.stop_loss);
+          customAiSlDistance = dist;
+          recalculateLotSize();
+          addAlert(`Applied AI Levels: Entry $${exec.entry.toFixed(2)} | SL $${exec.stop_loss.toFixed(2)} (Dist: $${dist.toFixed(2)})`, 'general');
+        }
+      }
+    });
+  }
+
+  // ==========================================================================
+  // On-Demand AI Market Re-Evaluation
+  // ==========================================================================
+  async function triggerAiRescan() {
+    if (!elBtnRescanAi) return;
+    elBtnRescanAi.classList.add('scanning');
+    elBtnRescanAi.disabled = true;
+    elBtnRescanAi.innerHTML = `<span class="btn-icon">⏳</span><span>Scanning...</span>`;
+
+    try {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send('request_ai_analysis');
+      } else {
+        const res = await fetch('/api/ai/analyze', { method: 'POST' });
+        if (res.ok) {
+          const data = await res.json();
+          renderAiAnalysis(data);
+          addAlert(`AI Setup Re-Scanned: [${data.setup_grade}] ${data.headline}`, 'sweep');
+        }
+      }
+    } catch (e) {
+      console.error("Error triggering AI re-scan:", e);
+    } finally {
+      setTimeout(() => {
+        elBtnRescanAi.classList.remove('scanning');
+        elBtnRescanAi.disabled = false;
+        elBtnRescanAi.innerHTML = `<span class="btn-icon">⚡</span><span>Re-Scan AI</span>`;
+      }, 600);
+    }
+  }
+
+  if (elBtnRescanAi) {
+    elBtnRescanAi.addEventListener('click', triggerAiRescan);
+  }
 
   // ==========================================================================
   // Clocks & Timers Loop (1 Second Interval)

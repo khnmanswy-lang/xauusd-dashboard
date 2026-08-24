@@ -193,18 +193,92 @@
       </div>
     </section>
 
-    <!-- RIGHT COLUMN: EXECUTION & LOT CALCULATOR -->
+    <!-- RIGHT COLUMN: AI SETUP SCANNER, TRADE PLAN & LOT SIZER -->
     <aside class="column column-right">
-      <!-- M5 Candle Countdown Clock -->
+      <!-- M5 Candle Countdown & Quick Re-Scan Action -->
       <div class="candle-timer-card">
-        <div id="m5-timer-display" class="timer-digits num">02:45</div>
-        <div class="timer-sub">M5 CANDLE COUNTDOWN</div>
+        <div class="timer-top-row">
+          <div class="timer-left">
+            <div id="m5-timer-display" class="timer-digits num">02:45</div>
+            <div class="timer-sub">M5 CANDLE COUNTDOWN</div>
+          </div>
+          <button id="btn-rescan-ai" class="btn-rescan" title="Trigger immediate AI market structure re-evaluation">
+            <span class="btn-icon">⚡</span>
+            <span>Re-Scan AI</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- AI Real-Time Analysis & Trade Setup Card -->
+      <div class="card ai-card">
+        <div class="card-header ai-card-header">
+          <div class="ai-header-left">
+            <span class="ai-robot-icon">🤖</span>
+            <span class="ai-title">AI SETUP SCANNER</span>
+          </div>
+          <div class="ai-header-right">
+            <span id="ai-grade-badge" class="tf-badge badge-bull">GRADE_A LONG</span>
+            <span id="ai-confidence-badge" class="ai-conf-tag num">92%</span>
+          </div>
+        </div>
+        <div class="card-body ai-card-body">
+          <!-- Setup Headline -->
+          <div id="ai-headline" class="ai-headline-text">
+            GRADE A LONG: Asian Low Liquidity Purge
+          </div>
+
+          <!-- Institutional Thesis -->
+          <p id="ai-thesis" class="ai-thesis-text">
+            Price swept below the Asian Low ($2,928.00) during London Open, purging sell-side liquidity before printing an impulsive M5 CHoCH above $2,933.00.
+          </p>
+
+          <!-- Order Flow Breakdown List -->
+          <div class="ai-breakdown-box">
+            <div class="ai-box-title">ORDER FLOW CONFLUENCE</div>
+            <ul id="ai-breakdown-list" class="ai-breakdown-list">
+              <li>Asian Range sell-side liquidity purged and rejected at $2,928.00.</li>
+              <li>M5 displacement confirmed structure shift with Bullish FVG retest.</li>
+              <li>Trading above Session VWAP with healthy ADR capacity.</li>
+            </ul>
+          </div>
+
+          <!-- Actionable Execution Levels -->
+          <div class="execution-grid">
+            <div class="exec-cell">
+              <span class="exec-label">Suggested Entry</span>
+              <span id="ai-entry-price" class="exec-val num" style="color: var(--gold-accent);">$2,932.50</span>
+            </div>
+            <div class="exec-cell">
+              <span class="exec-label">Stop Loss</span>
+              <span id="ai-sl-price" class="exec-val num" style="color: var(--bearish-red);">$2,927.50</span>
+            </div>
+            <div class="exec-cell">
+              <span class="exec-label">Target 1 (1:2)</span>
+              <span id="ai-tp1-price" class="exec-val num" style="color: var(--bullish-green);">$2,942.50</span>
+            </div>
+            <div class="exec-cell">
+              <span class="exec-label">Target 2 (Asia High)</span>
+              <span id="ai-tp2-price" class="exec-val num" style="color: var(--blue-accent);">$2,945.00</span>
+            </div>
+          </div>
+
+          <!-- Invalidation Note -->
+          <div id="ai-invalidation-box" class="invalidation-note">
+            ⚠️ <span id="ai-invalidation-text">M5 close below $2,927.50 invalidates bullish order block.</span>
+          </div>
+
+          <!-- Psychology Callout -->
+          <div id="ai-psychology-box" class="psychology-callout">
+            🧠 <span id="ai-psychology-text">Execute at FVG entry with strict 1% risk. Do not chase green candles.</span>
+          </div>
+        </div>
       </div>
 
       <!-- Dynamic Risk & Lot Calculator -->
       <div class="card">
-        <div class="card-header">
+        <div class="card-header" style="justify-content: space-between;">
           <span>ATR Dynamic Lot Sizer</span>
+          <button id="btn-apply-ai-risk" class="btn-mini-apply" title="Load AI Entry & Stop Loss into calculator">Apply AI Levels</button>
         </div>
         <div class="card-body">
           <div class="risk-form-group">
@@ -252,7 +326,7 @@
       </div>
 
       <!-- Real-Time Alerts Feed -->
-      <div class="card" style="flex: 1;">
+      <div class="card" style="flex: 1; min-height: 120px;">
         <div class="card-header">
           <span>Live Signal & Event Feed</span>
           <span style="font-size: 9px; color: var(--text-muted);">AUTO-STREAM</span>
