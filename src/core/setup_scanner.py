@@ -220,17 +220,17 @@ def scan_market_setup(
     if direction == "BULLISH_LONG":
         entry_price = ce_level if (fvg_ok and ce_level) else current_price
         
-        # Stop loss anchored below swing low or Asian Low
-        if levels.asia_low is not None and levels.asia_low < entry_price:
-            sl_price = round(min(levels.asia_low - 0.50, entry_price - sl_distance), 2)
+        # Stop loss anchored below recent sweep or local 1.5x ATR invalidation
+        if sweep_ok and levels.asia_low is not None and (entry_price - levels.asia_low) <= (sl_distance * 2.5):
+            sl_price = round(levels.asia_low - 0.50, 2)
         else:
             sl_price = round(entry_price - sl_distance, 2)
         
-        actual_risk = round(entry_price - sl_price, 2)
+        actual_risk = max(1.0, round(entry_price - sl_price, 2))
         tp1_price = round(entry_price + (actual_risk * 2.0), 2)
         
         # Structural target (Asian High or PDH)
-        tp2_price = round(levels.asia_high if levels.asia_high and levels.asia_high > entry_price else (entry_price + actual_risk * 3.5), 2)
+        tp2_price = round(levels.asia_high if levels.asia_high and levels.asia_high > entry_price else (entry_price + actual_risk * 3.0), 2)
         invalidation = f"M5 close below ${sl_price:.2f} invalidates bullish order block."
 
         if sweep_ok:
@@ -247,14 +247,15 @@ def scan_market_setup(
     else:  # BEARISH_SHORT
         entry_price = ce_level if (fvg_ok and ce_level) else current_price
         
-        if levels.asia_high is not None and levels.asia_high > entry_price:
-            sl_price = round(max(levels.asia_high + 0.50, entry_price + sl_distance), 2)
+        # Stop loss anchored above recent sweep or local 1.5x ATR invalidation
+        if sweep_ok and levels.asia_high is not None and (levels.asia_high - entry_price) <= (sl_distance * 2.5):
+            sl_price = round(levels.asia_high + 0.50, 2)
         else:
             sl_price = round(entry_price + sl_distance, 2)
 
-        actual_risk = round(sl_price - entry_price, 2)
+        actual_risk = max(1.0, round(sl_price - entry_price, 2))
         tp1_price = round(entry_price - (actual_risk * 2.0), 2)
-        tp2_price = round(levels.asia_low if levels.asia_low and levels.asia_low < entry_price else (entry_price - actual_risk * 3.5), 2)
+        tp2_price = round(levels.asia_low if levels.asia_low and levels.asia_low < entry_price else (entry_price - actual_risk * 3.0), 2)
         invalidation = f"M5 close above ${sl_price:.2f} invalidates bearish order block."
 
         if sweep_ok:
