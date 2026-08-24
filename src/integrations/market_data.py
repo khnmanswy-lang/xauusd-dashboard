@@ -35,6 +35,7 @@ from src.core.structure import (
     detect_fair_value_gaps,
     calculate_confluence_matrix
 )
+from src.core.setup_scanner import scan_market_setup, SetupResult
 from src.integrations.macro_feed import MacroFeed
 from src.integrations.economic_calendar import EconomicCalendar
 from src.integrations.oanda_client import OandaClient
@@ -81,6 +82,13 @@ class MarketDataEngine:
         self._confluence_matrix: Dict[str, Any] = {}
         self._volatility_state: Dict[str, Any] = {}
         self._indicators_matrix: Dict[str, Any] = {}
+        self._setup_result: SetupResult = SetupResult(
+            grade="NO_SETUP",
+            direction="NEUTRAL",
+            confidence_score=0.0,
+            setup_type="Initializing",
+            timestamp=int(time.time())
+        )
 
         # Listeners for real-time state broadcast
         self._listeners: Set[Callable[[Dict[str, Any]], Any]] = set()
@@ -304,6 +312,20 @@ class MarketDataEngine:
             fvgs=self._fvgs_m5
         )
 
+        # 7. Setup Scanner (5-point institutional confluence detection)
+        news_status = self.calendar.get_next_event_status()
+        self._setup_result = scan_market_setup(
+            current_price=self._current_price,
+            m5_df=self._m5_df,
+            levels=self._session_levels,
+            fvgs=self._fvgs_m5,
+            m15_vwap=m15_vwap_val,
+            h1_ema200=h1_ema200_val,
+            adr_used_pct=adr_used_pct,
+            news_guard_active=news_status.get("guard_active", False),
+            atr_m5=atr_m5
+        )
+
     def _build_interpretations_matrix(
         self,
         price: float,
@@ -510,6 +532,7 @@ class MarketDataEngine:
             "volatility": self._volatility_state,
             "session": self._session_levels.to_dict(),
             "news": news_status,
+            "setup_scan": self._setup_result.to_dict(),
             "overlays": {
                 "fvgs": fvgs_data
             }
