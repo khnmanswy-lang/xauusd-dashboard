@@ -120,6 +120,9 @@ def run_intraday_backtest(candles_m1: List[Candle], cooldown_minutes: int = 60) 
         return {"error": "Insufficient M5 candles"}
 
     trades = []
+    rejected_plans = []
+    handovers_logged = 0
+    pending_plan: Optional[Dict[str, Any]] = None
     last_setup_time = -999999999
     cooldown_seconds = cooldown_minutes * 60
 
@@ -129,55 +132,121 @@ def run_intraday_backtest(candles_m1: List[Candle], cooldown_minutes: int = 60) 
         current_candle = current_m5_window.iloc[-1]
         current_ts = int(current_candle['timestamp'])
         current_price = float(current_candle['close'])
+        current_low = float(current_candle['low'])
+        current_high = float(current_candle['high'])
         current_time_dt = datetime.fromtimestamp(current_ts, tz=timezone.utc)
 
-        # Enforce 1-hour cooldown between setups
-        if current_ts - last_setup_time < cooldown_seconds:
-            continue
+        # ----------------------------------------------------------------------
+        # 1. EVALUATE PENDING PLAN HANDOVER / TRIGGER / REJECTION
+        # ----------------------------------------------------------------------
+        trigger_setup = None
+        if pending_plan is not None:
+            p_dir = pending_plan["direction"]
+            p_target = pending_plan["target_level"]
+            p_inval = pending_plan["invalidation_level"]
+            
+            # Check Invalidation / Rejection condition
+            is_rejected = False
+            rejection_reason = ""
+            
+            if p_dir == "BULLISH_LONG" and current_low < p_inval:
+                is_rejected = True
+                rejection_reason = f"Price flushed below invalidation (${p_inval:.2f}) before trigger. Long thesis rejected."
+            elif p_dir == "BEARISH_SHORT" and current_high > p_inval:
+                is_rejected = True
+                rejection_reason = f"Price pushed above invalidation (${p_inval:.2f}) before trigger. Short thesis rejected."
+            elif (current_ts - pending_plan["created_ts"]) > (120 * 60):  # Stale after 2 hours
+                is_rejected = True
+                rejection_reason = "Pending plan timed out (> 2 hours without trigger)."
 
-        # Get historical 1m sub-slices for indicators
-        df_1m_slice = df_1m_full[df_1m_full['timestamp'] <= current_ts].copy()
-        m15_df = resample_candles(df_1m_slice, 15)
-        h1_df = resample_candles(df_1m_slice, 60)
+            if is_rejected:
+                rejected_plans.append({
+                    "timestamp_utc": current_time_dt.strftime("%Y-%m-%d %H:%M UTC"),
+                    "direction": p_dir,
+                    "target": p_target,
+                    "invalidation": p_inval,
+                    "reason": rejection_reason
+                })
+                pending_plan = None
+            else:
+                # Check if trigger condition is satisfied!
+                is_triggered = False
+                if p_dir == "BULLISH_LONG":
+                    if current_low <= p_target + 0.50 and current_low >= p_inval:
+                        is_triggered = True
+                elif p_dir == "BEARISH_SHORT":
+                    if current_high >= p_target - 0.50 and current_high <= p_inval:
+                        is_triggered = True
 
-        levels = calculate_session_levels(current_m5_window, current_time=current_time_dt)
-        levels.recent_sweep = detect_liquidity_sweeps(current_m5_window, levels, lookback=8)
-        fvgs = detect_fair_value_gaps(current_m5_window, max_gaps=5)
+                if is_triggered:
+                    # Fire execution!
+                    trigger_setup = pending_plan["setup"]
+                    pending_plan = None
+                else:
+                    # Silently handover to next cron bar
+                    pending_plan["handover_bars"] += 1
+                    handovers_logged += 1
 
-        # Macro indicators
-        if not m15_df.empty:
-            vwap_tuple = calculate_session_vwap(m15_df)
-            m15_vwap = float(vwap_tuple[0].iloc[-1]) if len(vwap_tuple[0]) > 0 else None
-        else:
-            m15_vwap = None
+        # ----------------------------------------------------------------------
+        # 2. SCAN FOR NEW SETUP IF NO ACTIVE PENDING PLAN & COOLDOWN CLEAR
+        # ----------------------------------------------------------------------
+        if trigger_setup is None and pending_plan is None:
+            if current_ts - last_setup_time >= cooldown_seconds:
+                # Get historical 1m sub-slices for indicators
+                df_1m_slice = df_1m_full[df_1m_full['timestamp'] <= current_ts].copy()
+                m15_df = resample_candles(df_1m_slice, 15)
+                h1_df = resample_candles(df_1m_slice, 60)
 
-        h1_ema200 = float(calculate_ema(h1_df['close'], 200).iloc[-1]) if len(h1_df) >= 20 else (float(h1_df['close'].mean()) if not h1_df.empty else None)
-        atr_m5 = float(calculate_atr(current_m5_window, 14).iloc[-1]) if len(current_m5_window) >= 14 else 2.0
+                levels = calculate_session_levels(current_m5_window, current_time=current_time_dt)
+                levels.recent_sweep = detect_liquidity_sweeps(current_m5_window, levels, lookback=8)
+                fvgs = detect_fair_value_gaps(current_m5_window, max_gaps=5)
 
-        # Scan for institutional setup
-        setup: SetupResult = scan_market_setup(
-            current_price=current_price,
-            m5_df=current_m5_window,
-            levels=levels,
-            fvgs=fvgs,
-            m15_vwap=m15_vwap,
-            h1_ema200=h1_ema200,
-            adr_used_pct=45.0,
-            news_guard_active=False,
-            atr_m5=atr_m5
-        )
+                if not m15_df.empty:
+                    vwap_tuple = calculate_session_vwap(m15_df)
+                    m15_vwap = float(vwap_tuple[0].iloc[-1]) if len(vwap_tuple[0]) > 0 else None
+                else:
+                    m15_vwap = None
 
-        if setup.grade in ["GRADE_A", "GRADE_B"] and setup.suggested_entry is not None:
-            # Valid setup found! Lock setup time for 1-hour cooldown
+                h1_ema200 = float(calculate_ema(h1_df['close'], 200).iloc[-1]) if len(h1_df) >= 20 else (float(h1_df['close'].mean()) if not h1_df.empty else None)
+                atr_m5 = float(calculate_atr(current_m5_window, 14).iloc[-1]) if len(current_m5_window) >= 14 else 2.0
+
+                # Scan for institutional setup
+                scanned_setup: SetupResult = scan_market_setup(
+                    current_price=current_price,
+                    m5_df=current_m5_window,
+                    levels=levels,
+                    fvgs=fvgs,
+                    m15_vwap=m15_vwap,
+                    h1_ema200=h1_ema200,
+                    adr_used_pct=45.0,
+                    news_guard_active=False,
+                    atr_m5=atr_m5
+                )
+
+                if scanned_setup.grade in ["GRADE_A", "GRADE_B"] and scanned_setup.suggested_entry is not None:
+                    # If FVG was detected, form a pending plan and wait for the pullback touch!
+                    pending_plan = {
+                        "setup": scanned_setup,
+                        "target_level": scanned_setup.suggested_entry,
+                        "invalidation_level": scanned_setup.suggested_sl,
+                        "direction": scanned_setup.direction,
+                        "created_ts": current_ts,
+                        "handover_bars": 0
+                    }
+
+        # ----------------------------------------------------------------------
+        # 3. SIMULATE EXECUTED TRADE FORWARD
+        # ----------------------------------------------------------------------
+        if trigger_setup is not None:
             last_setup_time = current_ts
 
             entry_time_dt = datetime.fromtimestamp(current_ts, tz=timezone.utc)
-            entry_price = setup.suggested_entry
-            sl_price = setup.suggested_sl
-            tp1_price = setup.suggested_tp1
-            tp2_price = setup.suggested_tp2
-            direction = setup.direction
-            sl_dist = abs(entry_price - sl_price)
+            entry_price = trigger_setup.suggested_entry
+            sl_price = trigger_setup.suggested_sl
+            tp1_price = trigger_setup.suggested_tp1
+            tp2_price = trigger_setup.suggested_tp2
+            direction = trigger_setup.direction
+            sl_dist = max(1.0, abs(entry_price - sl_price))
 
             # Forward simulation on subsequent M5 candles
             outcome = "OPEN"
@@ -251,7 +320,6 @@ def run_intraday_backtest(candles_m1: List[Candle], cooldown_minutes: int = 60) 
                         break
 
             if outcome == "OPEN":
-                # Mark as still active/open at the latest candle
                 last_bar = full_m5_df.iloc[-1]
                 exit_price = float(last_bar['close'])
                 exit_time_dt = datetime.fromtimestamp(int(last_bar['timestamp']), tz=timezone.utc)
@@ -263,11 +331,9 @@ def run_intraday_backtest(candles_m1: List[Candle], cooldown_minutes: int = 60) 
             trades.append({
                 "trade_num": len(trades) + 1,
                 "timestamp_utc": entry_time_dt.strftime("%Y-%m-%d %H:%M UTC"),
-                "session": levels.active_session,
-                "killzone": levels.killzone,
-                "grade": setup.grade,
+                "grade": trigger_setup.grade,
                 "direction": direction,
-                "confidence": f"{round(setup.confidence_score * 100)}%",
+                "confidence": f"{round(trigger_setup.confidence_score * 100)}%",
                 "entry": entry_price,
                 "sl": sl_price,
                 "tp1": tp1_price,
@@ -279,8 +345,7 @@ def run_intraday_backtest(candles_m1: List[Candle], cooldown_minutes: int = 60) 
                 "r_multiple": r_multiple,
                 "max_fav_usd": round(max_favorable, 2),
                 "max_adv_usd": round(max_adverse, 2),
-                "points_met": f"{setup.points_met}/5",
-                "reasons": setup.reasons
+                "reasons": trigger_setup.reasons
             })
 
     # Summary Statistics
@@ -299,19 +364,22 @@ def run_intraday_backtest(candles_m1: List[Candle], cooldown_minutes: int = 60) 
         "total_candles_m1": len(candles_m1),
         "total_m5_bars": len(full_m5_df),
         "cooldown_minutes": cooldown_minutes,
+        "handovers_logged": handovers_logged,
         "total_trades": total_trades,
         "wins": len(wins),
         "losses": len(losses),
         "win_rate_pct": round(win_rate, 1),
         "total_r_return": round(total_r, 2),
         "profit_factor": round(profit_factor, 2),
+        "rejected_plans": rejected_plans,
         "trades": trades
     }
 
 
 async def main():
     print("=" * 80)
-    print("XAUUSD INSTITUTIONAL 5-POINT SETUP SCANNER: TODAY'S BACKTEST")
+    print("XAUUSD INSTITUTIONAL 5-POINT SETUP SCANNER: STATEFUL CRON PLAN BACKTEST")
+    print("Features: Silent Handover, Pre-Trade Condition Tracking & Invalidation Rejection")
     print("Constraint: Minimum 1-Hour (60m) Cooldown Between Setups")
     print("=" * 80)
 
@@ -322,18 +390,26 @@ async def main():
 
     print("\n" + "=" * 80)
     print(f"BACKTEST SUMMARY FOR {results.get('date')}")
-    print(f"Total Setups Found: {results.get('total_trades')} | Win Rate: {results.get('win_rate_pct')}% | Total Return: {results.get('total_r_return')}R | Profit Factor: {results.get('profit_factor')}")
+    print(f"Handovers Evaluated: {results.get('handovers_logged')} | Plans Cancelled/Rejected: {len(results.get('rejected_plans', []))}")
+    print(f"Trades Executed: {results.get('total_trades')} | Wins: {results.get('wins')} | Losses: {results.get('losses')}")
+    print(f"Win Rate: {results.get('win_rate_pct')}% | Cumulative Return: {results.get('total_r_return')}R | Profit Factor: {results.get('profit_factor')}")
     print("=" * 80)
+
+    rejected = results.get("rejected_plans", [])
+    if rejected:
+        print("\n--- PRE-TRADE CANCELLED / REJECTED PLANS (FALSE LOSSES PREVENTED) ---")
+        for r in rejected:
+            print(f"  ❌ [{r['timestamp_utc']}] {r['direction']} -> Target: ${r['target']:.2f} | Reason: {r['reason']}")
 
     trades = results.get("trades", [])
     if not trades:
-        print("No setups met the full confluence criteria today with the 1-hour cooldown constraint.")
+        print("\nNo setups triggered execution today with the 1-hour cooldown constraint.")
         return
 
+    print("\n--- EXECUTED TRADES LOG ---")
     for t in trades:
-        print(f"\n--- [Setup #{t['trade_num']}] {t['grade']} {t['direction']} ({t['confidence']} Confluence) ---")
-        print(f"Entry Time (UTC): {t['timestamp_utc']} | Session: {t['session']} [{t['killzone']}]")
-        print(f"Confluence Score: {t['points_met']} points verified | Cooldown enforced: >= 60 min")
+        print(f"\n--- [Trade #{t['trade_num']}] {t['grade']} {t['direction']} ({t['confidence']} Confluence) ---")
+        print(f"Entry Time (UTC): {t['timestamp_utc']}")
         print(f"Entry: ${t['entry']:.2f} | SL: ${t['sl']:.2f} (Risk: ${t['sl_distance']:.2f}) | TP1: ${t['tp1']:.2f} | TP2: ${t['tp2']:.2f}")
         print(f"Outcome: {t['outcome']} at {t['exit_time_utc']} (${t['exit_price']:.2f}) -> Return: {t['r_multiple']:+.2f}R")
         print(f"Excursion: Max Favorable +${t['max_fav_usd']:.2f} | Max Adverse -${t['max_adv_usd']:.2f}")

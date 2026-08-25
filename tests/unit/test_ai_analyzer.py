@@ -183,3 +183,57 @@ async def test_ai_analyzer_evaluate_market_flow():
 
     cached = analyzer.get_latest_analysis()
     assert cached["headline"] == result["headline"]
+
+
+def test_ai_client_plan_handover_and_rejection_lifecycle():
+    client = AiClient()
+    pending_plan = {
+        "setup_grade": "GRADE_A",
+        "direction": "BULLISH_LONG",
+        "confidence_score": 0.85,
+        "plan_status": "WAITING_FOR_TRIGGER",
+        "trigger_condition": {
+            "condition_type": "FVG_RETEST",
+            "target_level": 2932.00,
+            "invalidation_level": 2927.00,
+            "description": "Wait for pullback to 2932.00"
+        },
+        "execution_plan": {
+            "entry": 2932.00,
+            "stop_loss": 2927.00,
+            "take_profit_1": 2942.00,
+            "take_profit_2": 2948.00
+        }
+    }
+
+    # Case 1: Still waiting (price at 2936.00) -> Silent Handover
+    frame_waiting = {
+        "xauusd": {"price": 2936.00},
+        "volatility": {"adr_used_pct": 50.0},
+        "news": {"guard_active": False}
+    }
+    res_waiting = client._generate_deterministic_analysis(frame_waiting, previous_analysis=pending_plan)
+    assert res_waiting["plan_status"] == "WAITING_FOR_TRIGGER"
+    assert "Handover" in res_waiting["headline"] or res_waiting["handover_notes"] is not None
+
+    # Case 2: Target touched (price at 2932.20) -> Trigger Fired!
+    frame_triggered = {
+        "xauusd": {"price": 2932.20},
+        "volatility": {"adr_used_pct": 50.0},
+        "news": {"guard_active": False}
+    }
+    res_triggered = client._generate_deterministic_analysis(frame_triggered, previous_analysis=pending_plan)
+    assert res_triggered["plan_status"] == "READY_TO_EXECUTE"
+    assert res_triggered["confidence_score"] >= 0.85
+
+    # Case 3: Invalidation breached (price drops to 2925.00 < 2927.00) -> Plan Rejected!
+    frame_rejected = {
+        "xauusd": {"price": 2925.00},
+        "volatility": {"adr_used_pct": 50.0},
+        "news": {"guard_active": False}
+    }
+    res_rejected = client._generate_deterministic_analysis(frame_rejected, previous_analysis=pending_plan)
+    assert res_rejected["plan_status"] == "PLAN_REJECTED"
+    assert res_rejected["setup_grade"] == "NO_SETUP"
+    assert res_rejected["rejection_reason"] is not None
+    assert "invalidated" in res_rejected["rejection_reason"].lower()

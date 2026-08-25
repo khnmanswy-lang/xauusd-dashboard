@@ -324,12 +324,27 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!aiData) return;
     latestAiAnalysis = aiData;
 
-    // 1. Grade Badge
+    // 1. Grade Badge & Plan Status
     const grade = aiData.setup_grade || 'NO_SETUP';
     const dir = aiData.direction || 'NEUTRAL';
+    const status = aiData.plan_status || 'NO_SETUP';
+
     if (elAiGradeBadge) {
-      elAiGradeBadge.textContent = `${grade.replace('_', ' ')} ${dir === 'BULLISH_LONG' ? 'LONG' : (dir === 'BEARISH_SHORT' ? 'SHORT' : '')}`.trim();
-      elAiGradeBadge.className = `tf-badge ${grade === 'GRADE_A' ? 'badge-bull' : (grade === 'GRADE_B' ? 'badge-neut' : 'badge-neut')}`;
+      let statusText = `${grade.replace('_', ' ')} ${dir === 'BULLISH_LONG' ? 'LONG' : (dir === 'BEARISH_SHORT' ? 'SHORT' : '')}`.trim();
+      if (status === 'WAITING_FOR_TRIGGER') {
+        statusText = `⏳ PENDING TRIGGER (${dir.replace('_', ' ')})`;
+      } else if (status === 'PLAN_REJECTED') {
+        statusText = `❌ PLAN CANCELLED`;
+      } else if (status === 'ACTIVE_MANAGEMENT') {
+        statusText = `🛡️ ACTIVE (TRAILING)`;
+      }
+
+      elAiGradeBadge.textContent = statusText;
+      elAiGradeBadge.className = `tf-badge ${
+        status === 'READY_TO_EXECUTE' ? (dir === 'BULLISH_LONG' ? 'badge-bull' : 'badge-bear') :
+        (status === 'WAITING_FOR_TRIGGER' ? 'badge-neut' :
+        (status === 'PLAN_REJECTED' ? 'badge-bear' : 'badge-neut'))
+      }`;
     }
 
     // 2. Confidence Tag
@@ -342,9 +357,26 @@ document.addEventListener('DOMContentLoaded', () => {
     if (elAiHeadline) elAiHeadline.textContent = aiData.headline || 'Analyzing market structure...';
     if (elAiThesis) elAiThesis.textContent = aiData.thesis || '';
 
-    // 4. Breakdown Bullets
+    // 4. Breakdown Bullets (including handover notes or rejection reason)
     if (elAiBreakdownList && Array.isArray(aiData.order_flow_breakdown)) {
       elAiBreakdownList.innerHTML = '';
+      
+      if (aiData.handover_notes) {
+        const liHandover = document.createElement('li');
+        liHandover.style.color = 'var(--gold-accent)';
+        liHandover.style.fontWeight = '600';
+        liHandover.textContent = `📋 Handover: ${aiData.handover_notes}`;
+        elAiBreakdownList.appendChild(liHandover);
+      }
+      
+      if (aiData.rejection_reason) {
+        const liRejection = document.createElement('li');
+        liRejection.style.color = '#fb7185';
+        liRejection.style.fontWeight = '600';
+        liRejection.textContent = `🚫 Rejection: ${aiData.rejection_reason}`;
+        elAiBreakdownList.appendChild(liRejection);
+      }
+
       aiData.order_flow_breakdown.forEach(item => {
         const li = document.createElement('li');
         li.textContent = item;
@@ -360,7 +392,15 @@ document.addEventListener('DOMContentLoaded', () => {
     if (elAiTp2Price) elAiTp2Price.textContent = exec.take_profit_2 ? `$${exec.take_profit_2.toFixed(2)}` : '--';
 
     // 6. Invalidation & Psychology Callouts
-    if (elAiInvalidationText) elAiInvalidationText.textContent = exec.invalidation || 'Awaiting setup confirmation.';
+    if (elAiInvalidationText) {
+      if (aiData.rejection_reason) {
+        elAiInvalidationText.textContent = `INVALIDATED: ${aiData.rejection_reason}`;
+      } else if (aiData.trigger_condition && aiData.trigger_condition.description) {
+        elAiInvalidationText.textContent = `CRON CONDITION: ${aiData.trigger_condition.description}`;
+      } else {
+        elAiInvalidationText.textContent = exec.invalidation || 'Awaiting setup confirmation.';
+      }
+    }
     if (elAiPsychologyText) elAiPsychologyText.textContent = aiData.psychology_warning || 'Maintain strict 1% risk discipline.';
   }
 

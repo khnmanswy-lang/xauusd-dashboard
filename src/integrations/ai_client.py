@@ -17,15 +17,24 @@ logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """You are an elite institutional quantitative gold (XAUUSD) trader and ICT/SMC structure analyst.
 Your task is to analyze real-time market data across H1 (Macro Bias), M15 (Structure/VWAP), and M5 (Execution/FVG/CHoCH).
-Evaluate whether there is an A+ or Grade B setup, or if the market is consolidating/in news blackout.
+Evaluate whether there is an active trade setup, or formulate a pending trading plan to wait for optimal timing, or evaluate/reject previous pending plans if market structure has shifted.
 Respond with a strict, valid JSON object with NO markdown wrapper or code fences.
 
 JSON Schema:
 {
-  "headline": "Short punchy status headline (e.g. 'GRADE A LONG: Asian Low Liquidity Purge')",
+  "headline": "Short punchy status headline (e.g. 'GRADE A LONG: Asian Low Liquidity Purge' or 'PLAN HANDOVER: Awaiting FVG Pullback')",
   "setup_grade": "GRADE_A" | "GRADE_B" | "NO_SETUP",
   "direction": "BULLISH_LONG" | "BEARISH_SHORT" | "NEUTRAL",
   "confidence_score": 0.0 to 1.0,
+  "plan_status": "WAITING_FOR_TRIGGER" | "READY_TO_EXECUTE" | "ACTIVE_MANAGEMENT" | "PLAN_REJECTED" | "NO_SETUP",
+  "trigger_condition": {
+    "condition_type": "FVG_RETEST" | "CHoCH_BREAK" | "SWEEP_REJECTION" | "PRICE_LEVEL" | null,
+    "target_level": float or null,
+    "invalidation_level": float or null,
+    "description": "Specific condition required to trigger execution on subsequent cron calls"
+  },
+  "handover_notes": "Notes and context passed silently to the next 1-minute cron evaluation",
+  "rejection_reason": "Specific reason if previous plan was invalidated or rejected (or null)",
   "thesis": "2-3 sentences explaining the institutional order flow, liquidity purge, and displacement.",
   "order_flow_breakdown": [
     "Bullet 1 on session liquidity / sweep",
@@ -220,9 +229,9 @@ class AiClient:
         previous_analysis: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        Deterministic, institutional-grade rule-based explainer engine.
-        Converts live market telemetry, setup scanner results, and session levels
-        into comprehensive trade cards without requiring external API keys.
+        Deterministic, institutional-grade rule-based explainer engine with
+        Stateful Plan Lifecycle (Waiting for Trigger -> Ready to Execute -> Active Trailing -> Rejected).
+        Supports silent handover of conditions across 1-minute cron evaluations.
         """
         scan = market_frame.get("setup_scan", {})
         xau = market_frame.get("xauusd", {})
@@ -240,23 +249,130 @@ class AiClient:
         asia_high = sess.get("asia_high")
         asia_low = sess.get("asia_low")
         adr_pct = vol.get("adr_used_pct", 50.0)
+        news_guard = news.get("guard_active", False)
 
-        # Check if previous setup is active and needs trailing / adjustment
-        if previous_analysis and previous_analysis.get("setup_grade") in ["GRADE_A", "GRADE_B"]:
+        # ----------------------------------------------------------------------
+        # 1. EVALUATE PREVIOUS PENDING PLAN (SILENT HANDOVER OR REJECTION)
+        # ----------------------------------------------------------------------
+        if previous_analysis and previous_analysis.get("plan_status") == "WAITING_FOR_TRIGGER":
+            prev_trig = previous_analysis.get("trigger_condition", {})
+            prev_dir = previous_analysis.get("direction")
+            target_level = prev_trig.get("target_level")
+            inval_level = prev_trig.get("invalidation_level")
+
+            # Check for Invalidation / Rejection Conditions
+            is_invalidated = False
+            rejection_msg = None
+
+            if news_guard:
+                is_invalidated = True
+                rejection_msg = "High-impact news window active; pending setup plan cancelled for capital protection."
+            elif prev_dir == "BULLISH_LONG" and inval_level and price < inval_level:
+                is_invalidated = True
+                rejection_msg = f"Price breached invalidation level (${inval_level:.2f}); bullish order block structure invalidated."
+            elif prev_dir == "BEARISH_SHORT" and inval_level and price > inval_level:
+                is_invalidated = True
+                rejection_msg = f"Price breached invalidation level (${inval_level:.2f}); bearish order block structure invalidated."
+            elif adr_pct > 80.0:
+                is_invalidated = True
+                rejection_msg = f"Daily ADR capacity exhausted ({adr_pct:.0f}% used); risk-reward profile dismantled."
+
+            if is_invalidated:
+                return {
+                    "headline": f"PLAN REJECTED: {prev_dir.replace('_', ' ')} Invalidated",
+                    "setup_grade": "NO_SETUP",
+                    "direction": "NEUTRAL",
+                    "confidence_score": 0.15,
+                    "plan_status": "PLAN_REJECTED",
+                    "trigger_condition": None,
+                    "handover_notes": None,
+                    "rejection_reason": rejection_msg,
+                    "thesis": f"The pending {prev_dir} setup was cancelled by the AI engine: {rejection_msg}",
+                    "order_flow_breakdown": [
+                        f"Previous invalidation level: ${inval_level:.2f} triggered.",
+                        "Order flow structure shifted into opposing momentum.",
+                        "Clearing watchlist to prevent trapped entries."
+                    ],
+                    "execution_plan": {
+                        "entry": None, "stop_loss": None, "take_profit_1": None, "take_profit_2": None,
+                        "risk_reward_ratio": 0.0, "invalidation": "Plan cancelled."
+                    },
+                    "psychology_warning": "Discipline is not just taking trades; it is cancelling invalidated setups quickly."
+                }
+
+            # Check if Target Trigger Condition is Met!
+            condition_met = False
+            if prev_dir == "BULLISH_LONG":
+                # Triggered if price reached the pullback target level or FVG CE
+                if target_level and price <= target_level + 0.50 and price >= (inval_level or price - 5.0):
+                    condition_met = True
+            elif prev_dir == "BEARISH_SHORT":
+                if target_level and price >= target_level - 0.50 and price <= (inval_level or price + 5.0):
+                    condition_met = True
+
+            if condition_met:
+                # Transition from WAITING to READY_TO_EXECUTE!
+                exec_plan = previous_analysis.get("execution_plan", {})
+                return {
+                    "headline": f"TRIGGER FIRED: {previous_analysis.get('headline', 'Execute Setup')}",
+                    "setup_grade": previous_analysis.get("setup_grade", "GRADE_A"),
+                    "direction": prev_dir,
+                    "confidence_score": min(0.95, previous_analysis.get("confidence_score", 0.85) + 0.05),
+                    "plan_status": "READY_TO_EXECUTE",
+                    "trigger_condition": prev_trig,
+                    "handover_notes": f"Trigger condition met at ${price:.2f}. Setup active.",
+                    "rejection_reason": None,
+                    "thesis": f"Price successfully retested target level (${target_level:.2f}). Order block confirmed and ready for execution.",
+                    "order_flow_breakdown": previous_analysis.get("order_flow_breakdown", []),
+                    "execution_plan": exec_plan,
+                    "psychology_warning": "Execute planned lot size at market/limit. Stick to defined Stop Loss."
+                }
+            else:
+                # Maintain SILENT HANDOVER to next cron pass
+                return {
+                    "headline": f"PLAN HANDOVER: Awaiting {prev_dir.replace('_', ' ')} Trigger",
+                    "setup_grade": previous_analysis.get("setup_grade", "GRADE_B"),
+                    "direction": prev_dir,
+                    "confidence_score": previous_analysis.get("confidence_score", 0.75),
+                    "plan_status": "WAITING_FOR_TRIGGER",
+                    "trigger_condition": prev_trig,
+                    "handover_notes": f"Price at ${price:.2f}. Waiting for trigger at ${target_level:.2f} (Dist: ${abs(price - target_level):.2f}). Invalidation intact at ${inval_level:.2f}.",
+                    "rejection_reason": None,
+                    "thesis": f"Pending {prev_dir} structure is intact. Standing by for optimal entry pricing.",
+                    "order_flow_breakdown": [
+                        f"Target trigger level: ${target_level:.2f}.",
+                        f"Current price: ${price:.2f} (within valid expansion corridor).",
+                        f"Structural invalidation safe at ${inval_level:.2f}."
+                    ],
+                    "execution_plan": previous_analysis.get("execution_plan", {}),
+                    "psychology_warning": "Do not rush or front-run entries. Wait for price to touch the trigger zone."
+                }
+
+        # ----------------------------------------------------------------------
+        # 2. EVALUATE ACTIVE RUNNING TRADE (TRAILING STOP MANAGEMENT)
+        # ----------------------------------------------------------------------
+        if previous_analysis and (
+            previous_analysis.get("plan_status") in ["READY_TO_EXECUTE", "ACTIVE_MANAGEMENT"] or
+            previous_analysis.get("setup_grade") in ["GRADE_A", "GRADE_B"]
+        ):
             prev_entry = previous_analysis.get("execution_plan", {}).get("entry")
             prev_dir = previous_analysis.get("direction")
             prev_sl = previous_analysis.get("execution_plan", {}).get("stop_loss")
 
-            # If trade has moved > 1.5R in favor, recommend moving SL to Break-Even
+            # Trailing stop to Break-Even if profit >= 1.5R or +$3.00
             if prev_entry and prev_dir == "BULLISH_LONG" and price >= prev_entry + 3.0:
                 return {
                     "headline": "TRADE MANAGEMENT: Trail Stop to Break-Even (+$3.00 in Profit)",
                     "setup_grade": previous_analysis.get("setup_grade"),
                     "direction": prev_dir,
                     "confidence_score": 0.95,
-                    "thesis": f"Active Long setup from ${prev_entry:.2f} has expanded favorably to ${price:.2f}. Institutional liquidity objective (TP1) is within reach.",
+                    "plan_status": "ACTIVE_MANAGEMENT",
+                    "trigger_condition": None,
+                    "handover_notes": f"Active Long holding +${price - prev_entry:.2f} profit. Trailing SL to break-even.",
+                    "rejection_reason": None,
+                    "thesis": f"Active Long setup from ${prev_entry:.2f} expanded favorably to ${price:.2f}. Institutional liquidity objective is within reach.",
                     "order_flow_breakdown": [
-                        f"Price holding above original entry (${prev_entry:.2f}).",
+                        f"Price holding above entry (${prev_entry:.2f}).",
                         "Momentum expansion intact across M5 & M15 timeframes.",
                         f"Trail Stop Loss to Break-Even (${prev_entry + 0.50:.2f}) to lock in a risk-free position."
                     ],
@@ -271,98 +387,89 @@ class AiClient:
                     "psychology_warning": "Protect realized profits. Do not add to winning positions impulsively."
                 }
 
-        if grade == "GRADE_A":
-            if direction == "BULLISH_LONG":
-                headline = f"GRADE A LONG: {session_name} Asian Low Liquidity Purge"
-                thesis = (
-                    f"Price aggressively swept below the Asian Session Low (${asia_low:.2f}) during {session_name} {killzone}, "
-                    f"purging sell-side liquidity before printing a confirmed M5 CHoCH and retesting the Fair Value Gap."
-                )
-                breakdown = [
-                    f"Asian Range Low swept and rejected at ${asia_low:.2f}.",
-                    f"M5 displacement confirmed structure shift with Bullish FVG retest at ${scan.get('suggested_entry', price):.2f}.",
-                    f"Macro alignment intact (above Session VWAP) with healthy ADR capacity ({adr_pct:.0f}% used)."
-                ]
-                psych = "Execute at the designated FVG entry. Avoid chasing green candles if price exceeds entry by more than $1.50."
+        # ----------------------------------------------------------------------
+        # 3. NEW SETUP EVALUATION (READY TO EXECUTE OR FORMULATE PENDING PLAN)
+        # ----------------------------------------------------------------------
+        if grade in ["GRADE_A", "GRADE_B"]:
+            suggested_entry = scan.get("suggested_entry", price)
+            suggested_sl = scan.get("suggested_sl", price - 3.0)
+            suggested_tp1 = scan.get("suggested_tp1", price + 6.0)
+            suggested_tp2 = scan.get("suggested_tp2", price + 10.0)
+
+            # If price is slightly far from FVG 50% CE, form a WAITING_FOR_TRIGGER plan to handover!
+            if abs(price - suggested_entry) > 1.50:
+                plan_status = "WAITING_FOR_TRIGGER"
+                headline = f"PLAN HANDOVER: Awaiting {direction.replace('_', ' ')} Pullback"
+                handover_notes = f"Displacement confirmed. Awaiting pullback into FVG 50% CE (${suggested_entry:.2f}). Invalidation at ${suggested_sl:.2f}."
             else:
-                headline = f"GRADE A SHORT: {session_name} Asian High Liquidity Purge"
-                thesis = (
-                    f"Price swept above the Asian Session High (${asia_high:.2f}) during {session_name} {killzone}, "
-                    f"capturing buy-side liquidity before triggering an impulsive M5 CHoCH breakdown."
-                )
+                plan_status = "READY_TO_EXECUTE"
+                if sweep:
+                    headline = f"GRADE A LONG: {session_name} Asian Low Liquidity Purge" if direction == "BULLISH_LONG" else f"GRADE A SHORT: {session_name} Asian High Liquidity Purge"
+                else:
+                    headline = f"{grade.replace('_', ' ')} {direction.replace('_', ' ')}: Execution Confirmed"
+                handover_notes = f"Entry trigger active at ${price:.2f}."
+
+            if direction == "BULLISH_LONG":
+                thesis = f"Bullish structure confirmed during {session_name} {killzone}. Purged sell-side liquidity before printing M5 displacement."
                 breakdown = [
-                    f"Asian Range High swept and rejected at ${asia_high:.2f}.",
-                    f"M5 displacement confirmed structure breakdown with Bearish FVG retest at ${scan.get('suggested_entry', price):.2f}.",
-                    f"Macro alignment intact (below Session VWAP) with healthy ADR capacity ({adr_pct:.0f}% used)."
+                    f"Session liquidity dynamic: Asian Low at ${asia_low or 2928.0:.2f}.",
+                    f"M5 structure shift with target entry at ${suggested_entry:.2f}.",
+                    f"Trading in alignment with Session VWAP and healthy ADR capacity ({adr_pct:.0f}% used)."
                 ]
-                psych = "Execute with disciplined risk sizing. Confirm M5 candle closes below the invalidation level."
+            else:
+                thesis = f"Bearish structure confirmed during {session_name} {killzone}. Purged buy-side liquidity before printing M5 breakdown."
+                breakdown = [
+                    f"Session liquidity dynamic: Asian High at ${asia_high or 2950.0:.2f}.",
+                    f"M5 structure shift with target entry at ${suggested_entry:.2f}.",
+                    f"Trading in alignment below Session VWAP and healthy ADR capacity ({adr_pct:.0f}% used)."
+                ]
 
             return {
                 "headline": headline,
-                "setup_grade": "GRADE_A",
+                "setup_grade": grade,
                 "direction": direction,
                 "confidence_score": conf_score,
+                "plan_status": plan_status,
+                "trigger_condition": {
+                    "condition_type": "FVG_RETEST",
+                    "target_level": suggested_entry,
+                    "invalidation_level": suggested_sl,
+                    "description": f"Retest ${suggested_entry:.2f} entry zone without breaking ${suggested_sl:.2f}."
+                },
+                "handover_notes": handover_notes,
+                "rejection_reason": None,
                 "thesis": thesis,
                 "order_flow_breakdown": breakdown,
                 "execution_plan": {
-                    "entry": scan.get("suggested_entry"),
-                    "stop_loss": scan.get("suggested_sl"),
-                    "take_profit_1": scan.get("suggested_tp1"),
-                    "take_profit_2": scan.get("suggested_tp2"),
+                    "entry": suggested_entry,
+                    "stop_loss": suggested_sl,
+                    "take_profit_1": suggested_tp1,
+                    "take_profit_2": suggested_tp2,
                     "risk_reward_ratio": scan.get("risk_reward_ratio", 2.0),
-                    "invalidation": scan.get("invalidation_trigger", "M5 structural invalidation.")
+                    "invalidation": scan.get("invalidation_trigger", f"Close beyond ${suggested_sl:.2f}.")
                 },
-                "psychology_warning": psych
+                "psychology_warning": "Patience for high-grade confluence entries pays dividends."
             }
 
-        elif grade == "GRADE_B":
-            return {
-                "headline": f"GRADE B {direction.replace('_', ' ')}: Moderate Confluence",
-                "setup_grade": "GRADE_B",
-                "direction": direction,
-                "confidence_score": conf_score,
-                "thesis": (
-                    f"Intraday momentum is showing {direction.lower().replace('_', ' ')} tendencies near ${price:.2f}, "
-                    f"but lacks a full 5-point institutional sweep confirmation."
-                ),
-                "order_flow_breakdown": [
-                    f"Partial confluence with Session VWAP and trend indicators.",
-                    f"Active setup score {scan.get('points_met', 3)}/5 points met.",
-                    "Awaiting cleaner liquidity purge at session extremes before sizing full risk."
-                ],
-                "execution_plan": {
-                    "entry": scan.get("suggested_entry"),
-                    "stop_loss": scan.get("suggested_sl"),
-                    "take_profit_1": scan.get("suggested_tp1"),
-                    "take_profit_2": scan.get("suggested_tp2"),
-                    "risk_reward_ratio": 2.0,
-                    "invalidation": scan.get("invalidation_trigger", "M5 invalidation.")
-                },
-                "psychology_warning": "Consider half-position sizing (0.5% risk) until A+ liquidity sweep confirms."
-            }
-
-        else:
-            return {
-                "headline": "NO SETUP: Market Consolidating Within Session Range",
-                "setup_grade": "NO_SETUP",
-                "direction": "NEUTRAL",
-                "confidence_score": 0.25,
-                "thesis": (
-                    f"Price is oscillating between Asian High (${asia_high or 2940.0:.2f}) and Low (${asia_low or 2928.0:.2f}). "
-                    "Order flow is in equilibrium with no institutional displacement."
-                ),
-                "order_flow_breakdown": [
-                    "No liquidity sweeps detected on M5/M15 timeframe.",
-                    "Price hovering near Session VWAP benchmark.",
-                    "Conserving risk capital for London/NY Killzone expansion."
-                ],
-                "execution_plan": {
-                    "entry": None,
-                    "stop_loss": None,
-                    "take_profit_1": None,
-                    "take_profit_2": None,
-                    "risk_reward_ratio": 0.0,
-                    "invalidation": "Do not enter while market is in chop."
-                },
-                "psychology_warning": "Patience is alpha. Standing aside is an active trading decision."
-            }
+        # Default: No Setup
+        return {
+            "headline": "NO SETUP: Market Consolidating Within Session Range",
+            "setup_grade": "NO_SETUP",
+            "direction": "NEUTRAL",
+            "confidence_score": 0.25,
+            "plan_status": "NO_SETUP",
+            "trigger_condition": None,
+            "handover_notes": "No pending plan in queue. Scanning for liquidity sweeps.",
+            "rejection_reason": None,
+            "thesis": f"Price is oscillating between Asian High (${asia_high or 2940.0:.2f}) and Low (${asia_low or 2928.0:.2f}). Order flow is in equilibrium.",
+            "order_flow_breakdown": [
+                "No liquidity sweeps detected on M5/M15 timeframe.",
+                "Price hovering near Session VWAP benchmark.",
+                "Conserving risk capital for London/NY Killzone expansion."
+            ],
+            "execution_plan": {
+                "entry": None, "stop_loss": None, "take_profit_1": None, "take_profit_2": None,
+                "risk_reward_ratio": 0.0, "invalidation": "Do not enter while market is in chop."
+            },
+            "psychology_warning": "Patience is alpha. Standing aside is an active trading decision."
+        }
