@@ -5,10 +5,10 @@ Step states: `planned` -> `built` -> `tested` -> `committed`, or `BLOCKED: <reas
 Once every step for a feature is `committed`, run the `master-test` skill for a full system/e2e readiness check (not acceptance testing - that's the user's call) before moving the feature to Done.
 
 ## Session handoff
-- **Last session ended:** 2026-08-24 (Step 4 Completed: UI Refactor 3-Panel Layout)
+- **Last session ended:** 2026-08-25 (Forensic Learnings & Stateful Plan Handover Lifecycle documented in `docs/learnings.md`)
 - **In progress:** `Active feature: AI Setup Scanner & Right-Panel Analysis (Cron + OANDA v20)` (State: Steps 1, 2, 3, 4 `committed`, Step 5 `planned`)
-- **Next action for builder chat:** Start Step 5 — Verification & End-to-End Test Pass across live WebSocket streaming, AI rescan triggers, and dynamic lot sizing.
-- **Architectural spec:** Full specifications, scanner rules, AI prompt format, and UI wireframes are documented in `docs/architecture.md` and `docs/design.md`.
+- **Next action for builder chat:** Start Step 5 — Verification & End-to-End Test Pass across live WebSocket streaming, AI rescan triggers, stateful plan handovers, and dynamic lot sizing.
+- **Architectural & Strategy specs:** Full specifications in `docs/architecture.md`, `docs/design.md`, and `docs/learnings.md`.
 
 ---
 
