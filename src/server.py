@@ -88,6 +88,38 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
+# Cached active position state
+_current_active_position: Optional[Dict[str, Any]] = None
+
+
+async def get_active_oanda_position() -> Optional[Dict[str, Any]]:
+    """Helper to query and format active open trade on OANDA."""
+    global _current_active_position
+    if not oanda_client.is_configured():
+        return None
+    try:
+        open_trades = await oanda_client.get_open_trades()
+        if open_trades:
+            ot = open_trades[0]
+            units_val = float(ot.get("currentUnits", 0))
+            _current_active_position = {
+                "id": ot.get("id"),
+                "instrument": ot.get("instrument", "XAU_USD"),
+                "direction": "BULLISH_LONG" if units_val > 0 else "BEARISH_SHORT",
+                "units": units_val,
+                "entry_price": float(ot.get("price", 0.0)),
+                "stop_loss": float(ot.get("stopLossOrder", {}).get("price", 0.0)) if ot.get("stopLossOrder") else None,
+                "take_profit": float(ot.get("takeProfitOrder", {}).get("price", 0.0)) if ot.get("takeProfitOrder") else None,
+                "unrealized_pl": float(ot.get("unrealizedPL", 0.0)),
+                "open_time": ot.get("openTime")
+            }
+        else:
+            _current_active_position = None
+    except Exception as e:
+        logger.debug("Error fetching open OANDA trades: %s", e)
+    return _current_active_position
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown routines."""
@@ -96,6 +128,7 @@ async def lifespan(app: FastAPI):
 
     # Wire market engine listener to WebSocket manager
     async def _on_market_update(state: Dict[str, Any]):
+        state["active_trade"] = _current_active_position
         await manager.broadcast(state)
 
     # Wire AI analyzer listener to WebSocket manager
@@ -110,6 +143,7 @@ async def lifespan(app: FastAPI):
         try:
             await ai_analyzer.evaluate_market()
             trade_res = await auto_trader.evaluate_and_trade()
+            await get_active_oanda_position()
             if trade_res.get("status") in ["EXECUTED", "TRAILING_UPDATED", "ADR_EXHAUSTED"]:
                 await manager.broadcast({
                     "type": "AUTO_TRADE_UPDATE",
@@ -179,6 +213,7 @@ async def get_state() -> Dict[str, Any]:
     """Returns a full real-time state snapshot including latest AI trade plan."""
     frame = market_engine.get_state_frame()
     frame["ai_analysis"] = ai_analyzer.get_latest_analysis()
+    frame["active_trade"] = await get_active_oanda_position()
     return frame
 
 

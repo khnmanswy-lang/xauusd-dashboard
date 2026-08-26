@@ -37,6 +37,7 @@ def test_serve_js():
         res_chart = client.get("/static/js/chart.js")
         assert res_chart.status_code == 200
         assert "DashboardChart" in res_chart.text
+        assert "renderActivePositionOverlay" in res_chart.text
         assert "renderTradeSetupOverlay" in res_chart.text
 
         res_app = client.get("/static/js/app.js")

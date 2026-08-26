@@ -284,59 +284,8 @@
         </div>
       </div>
 
-      <!-- Dynamic Risk & Lot Calculator -->
-      <div class="card">
-        <div class="card-header" style="justify-content: space-between;">
-          <span>ATR Dynamic Lot Sizer</span>
-          <button id="btn-apply-ai-risk" class="btn-mini-apply" title="Load AI Entry & Stop Loss into calculator">Apply AI Levels</button>
-        </div>
-        <div class="card-body">
-          <div class="risk-form-group">
-            <div class="form-label-row">
-              <span>Account Balance ($)</span>
-            </div>
-            <input type="number" id="calc-balance" class="risk-input num" value="10000" step="500">
-          </div>
-
-          <div class="risk-form-group">
-            <div class="form-label-row">
-              <span>Risk Per Trade (%)</span>
-              <span id="calc-risk-display" class="num" style="color: var(--gold-accent); font-weight: 700;">1.0%</span>
-            </div>
-            <input type="range" id="calc-risk-slider" min="0.25" max="5.0" step="0.25" value="1.0" style="width: 100%; accent-color: var(--gold-accent);">
-          </div>
-
-          <div class="risk-form-group">
-            <div class="form-label-row">
-              <span>Stop Loss Multiplier (x ATR)</span>
-              <span id="calc-sl-display" class="num">1.5x</span>
-            </div>
-            <input type="range" id="calc-sl-slider" min="1.0" max="3.0" step="0.5" value="1.5" style="width: 100%; accent-color: var(--gold-accent);">
-          </div>
-
-          <div class="lot-calc-result-box">
-            <div class="lot-label">Recommended Lot Size</div>
-            <div id="calculated-lot-size" class="lot-num-big num">0.35</div>
-            <div style="font-size: 11px; color: var(--text-secondary); margin-top: 4px;">
-              Risk: $<span id="calc-risk-dollars" class="num">100.00</span> | SL Dist: $<span id="calc-sl-distance" class="num">2.85</span>
-            </div>
-          </div>
-
-          <div class="rr-breakdown">
-            <div class="rr-item">
-              <span style="color: var(--bearish-red);">SL (Long):</span>
-              <span id="calc-sl-price" class="num">$2,932.65</span>
-            </div>
-            <div class="rr-item">
-              <span style="color: var(--bullish-green);">TP 1:2:</span>
-              <span id="calc-tp2-price" class="num">$2,941.20</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
       <!-- Real-Time Alerts & Journal Feed -->
-      <div class="card" style="flex: 1; min-height: 120px;">
+      <div class="card" style="flex: 1; min-height: 220px;">
         <div class="card-header" style="justify-content: space-between;">
           <span>Live Signal & Trade Journal</span>
           <button id="btn-export-journal" class="btn-mini-export" title="Download CSV Trade Journal">📥 Export CSV</button>

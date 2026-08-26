@@ -73,9 +73,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const elAdrTotal = document.getElementById('adr-total');
   const elMatrixAdrInterp = document.getElementById('matrix-adr-interp');
 
-  // DOM Elements - Right Column: AI Setup Scanner & Lot Calculator
+  // DOM Elements - Right Column: AI Setup Scanner & Alert Feed
   const elBtnRescanAi = document.getElementById('btn-rescan-ai');
-  const elBtnApplyAiRisk = document.getElementById('btn-apply-ai-risk');
   const elAiGradeBadge = document.getElementById('ai-grade-badge');
   const elAiConfidenceBadge = document.getElementById('ai-confidence-badge');
   const elAiHeadline = document.getElementById('ai-headline');
@@ -89,20 +88,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const elAiPsychologyText = document.getElementById('ai-psychology-text');
 
   const elM5TimerDisplay = document.getElementById('m5-timer-display');
-  const elCalcBalance = document.getElementById('calc-balance');
-  const elCalcRiskSlider = document.getElementById('calc-risk-slider');
-  const elCalcRiskDisplay = document.getElementById('calc-risk-display');
-  const elCalcSlSlider = document.getElementById('calc-sl-slider');
-  const elCalcSlDisplay = document.getElementById('calc-sl-display');
-  const elCalculatedLot = document.getElementById('calculated-lot-size');
-  const elCalcRiskDollars = document.getElementById('calc-risk-dollars');
-  const elCalcSlDistance = document.getElementById('calc-sl-distance');
-  const elCalcSlPrice = document.getElementById('calc-sl-price');
-  const elCalcTp2Price = document.getElementById('calc-tp2-price');
   const elAlertFeedList = document.getElementById('alert-feed-list');
 
   let latestAiAnalysis = null;
-  let customAiSlDistance = null;
+  let latestActiveTrade = null;
 
   // ==========================================================================
   // WebSocket Client
@@ -314,8 +303,12 @@ document.addEventListener('DOMContentLoaded', () => {
       elAdrTotal.textContent = vol.adr_total ? vol.adr_total.toFixed(2) : '--';
     }
 
-    // 8. Update Chart (Live Candle)
+    // 8. Update Chart (Live Candle & Active Position / Planned Overlay)
     dashboardChart.updateCandle(gold);
+    latestActiveTrade = state.active_trade || null;
+    if (dashboardChart && typeof dashboardChart.renderActivePositionOverlay === 'function') {
+      dashboardChart.renderActivePositionOverlay(latestActiveTrade, latestAiAnalysis, gold.price);
+    }
 
     // 9. Update M5 Timer
     m5SecondsRemaining = gold.candle_timer_m5 || 300;
@@ -324,9 +317,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (state.ai_analysis) {
       renderAiAnalysis(state.ai_analysis);
     }
-
-    // 11. Recalculate Dynamic Lot Sizer
-    recalculateLotSize();
   }
 
   // ==========================================================================
@@ -415,58 +405,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (elAiPsychologyText) elAiPsychologyText.textContent = aiData.psychology_warning || 'Maintain strict 1% risk discipline.';
 
-    // 7. Render Visual Trade Setup & Rate Zone Lines on Interactive Chart
-    if (dashboardChart && typeof dashboardChart.renderTradeSetupOverlay === 'function') {
-      dashboardChart.renderTradeSetupOverlay(aiData);
+    // 7. Render Visual Active Position / Trade Setup Lines on Chart
+    const curP = (latestState && latestState.xauusd) ? latestState.xauusd.price : null;
+    if (dashboardChart && typeof dashboardChart.renderActivePositionOverlay === 'function') {
+      dashboardChart.renderActivePositionOverlay(latestActiveTrade, latestAiAnalysis, curP);
     }
-  }
-
-  // ==========================================================================
-  // Dynamic Lot Calculator Logic
-  // ==========================================================================
-  function recalculateLotSize() {
-    const balance = parseFloat(elCalcBalance.value) || 10000.0;
-    const riskPct = parseFloat(elCalcRiskSlider.value) || 1.0;
-    const slMult = parseFloat(elCalcSlSlider.value) || 1.5;
-    
-    elCalcRiskDisplay.textContent = `${riskPct.toFixed(2)}%`;
-    elCalcSlDisplay.textContent = `${slMult.toFixed(1)}x`;
-
-    const atrM5 = (latestState && latestState.volatility && latestState.volatility.atr_m5) ? latestState.volatility.atr_m5 : 2.20;
-    const currentPrice = (latestState && latestState.xauusd) ? latestState.xauusd.price : 2935.0;
-
-    const riskAmount = balance * (riskPct / 100.0);
-    const slDistance = customAiSlDistance || Math.max(0.20, atrM5 * slMult);
-    const calculatedLots = Math.max(0.01, roundNum(riskAmount / (slDistance * 100.0), 2));
-
-    elCalculatedLot.textContent = calculatedLots.toFixed(2);
-    elCalcRiskDollars.textContent = riskAmount.toFixed(2);
-    elCalcSlDistance.textContent = slDistance.toFixed(2);
-
-    const slPrice = currentPrice - slDistance;
-    const tp2Price = currentPrice + (2.0 * slDistance);
-
-    elCalcSlPrice.textContent = `$${slPrice.toFixed(2)}`;
-    elCalcTp2Price.textContent = `$${tp2Price.toFixed(2)}`;
-  }
-
-  // Bind calculator inputs & buttons
-  elCalcBalance.addEventListener('input', () => { customAiSlDistance = null; recalculateLotSize(); });
-  elCalcRiskSlider.addEventListener('input', () => { recalculateLotSize(); });
-  elCalcSlSlider.addEventListener('input', () => { customAiSlDistance = null; recalculateLotSize(); });
-
-  if (elBtnApplyAiRisk) {
-    elBtnApplyAiRisk.addEventListener('click', () => {
-      if (latestAiAnalysis && latestAiAnalysis.execution_plan) {
-        const exec = latestAiAnalysis.execution_plan;
-        if (exec.entry && exec.stop_loss) {
-          const dist = Math.abs(exec.entry - exec.stop_loss);
-          customAiSlDistance = dist;
-          recalculateLotSize();
-          addAlert(`Applied AI Levels: Entry $${exec.entry.toFixed(2)} | SL $${exec.stop_loss.toFixed(2)} (Dist: $${dist.toFixed(2)})`, 'general');
-        }
-      }
-    });
   }
 
   // ==========================================================================

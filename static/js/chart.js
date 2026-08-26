@@ -404,6 +404,118 @@ class DashboardChart {
   }
 
   // ==========================================================================
+  // Interactive Trade Setup & Live Position Overlay (Lines & HUD)
+  // ==========================================================================
+  renderActivePositionOverlay(activeTrade, setup, currentLivePrice) {
+    if (!this.candleSeries) return;
+
+    // 1. Remove existing price lines
+    if (this.priceLines && this.priceLines.length > 0) {
+      this.priceLines.forEach(pl => {
+        try { this.candleSeries.removePriceLine(pl); } catch (e) {}
+      });
+    }
+    this.priceLines = [];
+
+    // Case A: Real active trade is OPEN on OANDA!
+    if (activeTrade && activeTrade.entry_price) {
+      const entry = activeTrade.entry_price;
+      const sl = activeTrade.stop_loss;
+      const tp = activeTrade.take_profit;
+      const units = activeTrade.units || 0;
+      const isLong = activeTrade.direction === 'BULLISH_LONG' || units > 0;
+      const pnl = activeTrade.unrealized_pl || 0.0;
+      const livePrice = currentLivePrice || entry;
+
+      // Draw Entry Price Line (Gold Solid)
+      const entryLine = this.candleSeries.createPriceLine({
+        price: entry,
+        color: '#f0b90b',
+        lineWidth: 2,
+        lineStyle: LightweightCharts.LineStyle.Solid,
+        axisLabelVisible: true,
+        title: `⚡ OPEN #${activeTrade.id || ''} ($${entry.toFixed(2)})`
+      });
+      this.priceLines.push(entryLine);
+
+      // Draw Stop Loss Line (Red Solid)
+      if (sl) {
+        const slDist = Math.abs(entry - sl);
+        const slLine = this.candleSeries.createPriceLine({
+          price: sl,
+          color: '#f23645',
+          lineWidth: 2,
+          lineStyle: LightweightCharts.LineStyle.Solid,
+          axisLabelVisible: true,
+          title: `⛔ SL $${sl.toFixed(2)} (-$${slDist.toFixed(2)})`
+        });
+        this.priceLines.push(slLine);
+      }
+
+      // Draw Take Profit Line (Emerald Solid)
+      if (tp) {
+        const tpDist = Math.abs(tp - entry);
+        const tpLine = this.candleSeries.createPriceLine({
+          price: tp,
+          color: '#00f090',
+          lineWidth: 2,
+          lineStyle: LightweightCharts.LineStyle.Solid,
+          axisLabelVisible: true,
+          title: `🎯 TP $${tp.toFixed(2)} (+$${tpDist.toFixed(2)})`
+        });
+        this.priceLines.push(tpLine);
+      }
+
+      // Update HUD Overlay Box
+      if (!this.setupOverlayEl) {
+        this.setupOverlayEl = document.createElement('div');
+        this.setupOverlayEl.className = 'chart-setup-overlay num';
+        this.container.appendChild(this.setupOverlayEl);
+      }
+
+      const pnlColor = pnl >= 0 ? 'var(--bullish-green)' : 'var(--bearish-red)';
+      const pnlSign = pnl >= 0 ? '+' : '';
+      const sideText = isLong ? '🟢 ACTIVE LONG' : '🔴 ACTIVE SHORT';
+
+      this.setupOverlayEl.innerHTML = `
+        <div class="setup-overlay-header">
+          <div class="setup-overlay-tag">${sideText} <span style="font-size: 9.5px; color: var(--text-secondary);">[${units} Units]</span></div>
+          <div class="setup-overlay-rr" style="color: ${pnlColor}; font-size: 11px; font-weight: 800;">
+            PnL: ${pnlSign}$${pnl.toFixed(2)}
+          </div>
+        </div>
+        <div class="setup-overlay-grid">
+          <div class="setup-overlay-cell">
+            <span class="setup-overlay-lbl">ENTRY PRICE</span>
+            <span class="setup-overlay-val" style="color: var(--gold-accent);">$${entry.toFixed(2)}</span>
+          </div>
+          <div class="setup-overlay-cell">
+            <span class="setup-overlay-lbl">CURRENT PRICE</span>
+            <span class="setup-overlay-val" style="color: var(--text-primary);">$${livePrice.toFixed(2)}</span>
+          </div>
+          <div class="setup-overlay-cell">
+            <span class="setup-overlay-lbl">STOP LOSS</span>
+            <span class="setup-overlay-val" style="color: var(--bearish-red);">$${sl ? sl.toFixed(2) : '--'}</span>
+          </div>
+          <div class="setup-overlay-cell">
+            <span class="setup-overlay-lbl">TAKE PROFIT</span>
+            <span class="setup-overlay-val" style="color: #00f090;">$${tp ? tp.toFixed(2) : '--'}</span>
+          </div>
+        </div>
+        <div class="setup-rr-visual-bar" title="Position Active Bar">
+          <div class="setup-rr-risk" style="flex: 1;"></div>
+          <div class="setup-rr-reward" style="flex: 2;"></div>
+        </div>
+      `;
+      this.setupOverlayEl.style.display = 'flex';
+      return;
+    }
+
+    // Case B: Planned Setup from AI (when no active trade is open yet)
+    this.renderTradeSetupOverlay(setup);
+  }
+
+  // ==========================================================================
   // Interactive Trade Setup Overlay (Entry, Stop Loss, Take Profit Rate Lines)
   // ==========================================================================
   renderTradeSetupOverlay(setup) {
