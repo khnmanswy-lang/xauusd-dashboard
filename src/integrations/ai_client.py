@@ -396,6 +396,53 @@ class AiClient:
             suggested_tp1 = scan.get("suggested_tp1", price + 6.0)
             suggested_tp2 = scan.get("suggested_tp2", price + 10.0)
 
+            # Strategy Guard A: ADR Exhaustion Check (>80%) - Do not confirm execution if blocked!
+            if adr_pct > 80.0:
+                return {
+                    "headline": f"STANDING ASIDE: ADR Exhausted ({adr_pct:.0f}% Used - Blocked)",
+                    "setup_grade": grade,
+                    "direction": direction,
+                    "confidence_score": min(0.40, conf_score),
+                    "plan_status": "PLAN_REJECTED",
+                    "trigger_condition": None,
+                    "handover_notes": f"Setup detected ({grade}) but blocked: ADR capacity at {adr_pct:.0f}% (>80% ceiling). Standing aside for capital preservation.",
+                    "rejection_reason": f"Daily ADR capacity exhausted ({adr_pct:.0f}% used > 80% ceiling).",
+                    "thesis": f"{direction.replace('_', ' ')} structure detected, but daily ADR capacity is exhausted ({adr_pct:.0f}% used). Execution blocked to prevent entering at daily extremes.",
+                    "order_flow_breakdown": [
+                        f"Daily ADR utilization at {adr_pct:.0f}% (exceeds 80% maximum threshold).",
+                        f"Setup ({direction}) blocked by risk sentry.",
+                        "Standing aside until new session range establishes."
+                    ],
+                    "execution_plan": {
+                        "entry": None, "stop_loss": None, "take_profit_1": None, "take_profit_2": None,
+                        "risk_reward_ratio": 0.0, "invalidation": "Blocked by ADR Exhaustion Guard."
+                    },
+                    "psychology_warning": "Protect capital when the daily range is stretched. Do not chase trades into exhaustion."
+                }
+
+            # Strategy Guard B: News Blackout Check - Do not confirm execution if news guard is active!
+            if news_guard:
+                return {
+                    "headline": "STANDING ASIDE: High-Impact News Blackout Active",
+                    "setup_grade": grade,
+                    "direction": direction,
+                    "confidence_score": 0.30,
+                    "plan_status": "PLAN_REJECTED",
+                    "trigger_condition": None,
+                    "handover_notes": "High-impact economic news release window active. All automated entries blocked.",
+                    "rejection_reason": "High-impact news blackout window active.",
+                    "thesis": "High-impact macro event window active. Automated order placement paused.",
+                    "order_flow_breakdown": [
+                        "Economic calendar blackout active.",
+                        "Elevated slippage and spread risk."
+                    ],
+                    "execution_plan": {
+                        "entry": None, "stop_loss": None, "take_profit_1": None, "take_profit_2": None,
+                        "risk_reward_ratio": 0.0, "invalidation": "Blocked by News Guard."
+                    },
+                    "psychology_warning": "Never gamble into news releases. Capital preservation is priority #1."
+                }
+
             # If price is slightly far from deep FVG 65% CE, form a WAITING_FOR_TRIGGER plan to handover!
             if abs(price - suggested_entry) > 1.50:
                 plan_status = "WAITING_FOR_TRIGGER"

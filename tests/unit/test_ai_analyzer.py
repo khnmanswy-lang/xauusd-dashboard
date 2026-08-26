@@ -237,3 +237,30 @@ def test_ai_client_plan_handover_and_rejection_lifecycle():
     assert res_rejected["setup_grade"] == "NO_SETUP"
     assert res_rejected["rejection_reason"] is not None
     assert "invalidated" in res_rejected["rejection_reason"].lower()
+
+
+def test_ai_client_guards_prevent_execution_confirmed():
+    cfg = AiSettings()
+    client = AiClient(cfg)
+
+    # Frame with GRADE_B setup but ADR capacity exhausted at 88%
+    frame_adr_blocked = {
+        "xauusd": {"price": 2935.0},
+        "volatility": {"adr_used_pct": 88.0, "atr_m5": 2.0},
+        "news": {"guard_active": False},
+        "setup_scan": {
+            "grade": "GRADE_B",
+            "direction": "BEARISH_SHORT",
+            "confidence_score": 0.65,
+            "suggested_entry": 2935.0,
+            "suggested_sl": 2939.0
+        },
+        "session": {"active_session": "ASIA", "killzone": "OPEN"}
+    }
+
+    res = client._generate_deterministic_analysis(frame_adr_blocked)
+    # Must NOT say Execution Confirmed!
+    assert "Execution Confirmed" not in res["headline"]
+    assert "STANDING ASIDE" in res["headline"]
+    assert res["plan_status"] == "PLAN_REJECTED"
+    assert "ADR Exhausted" in res["headline"]
