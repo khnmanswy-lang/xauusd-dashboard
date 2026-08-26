@@ -152,11 +152,39 @@ def scan_market_setup(
     2. M5 CHoCH Displacement
     3. Deep Fair Value Gap Retest (65% CE Order Block origin)
     4. Macro Alignment (Session VWAP / H1 200 EMA)
-    5. Volatility / News Blackout Guard
+    5. Premium / Discount Equilibrium Filter
+    6. Volatility / ADR Exhaustion Guard
     """
     now_ts = int(datetime.now(timezone.utc).timestamp())
     bullish_sweep = levels.recent_sweep in ["ASIA_LOW_SWEPT", "PDL_SWEPT"]
     bearish_sweep = levels.recent_sweep in ["ASIA_HIGH_SWEPT", "PDH_SWEPT"]
+
+    # Guard 0: Hard ADR Exhaustion Filter (>80%) - No entries when daily range is depleted
+    if adr_used_pct >= 80.0:
+        return SetupResult(
+            grade="NO_SETUP",
+            direction="NEUTRAL",
+            confidence_score=0.15,
+            setup_type="ADR Exhausted / Standing Aside",
+            suggested_entry=None,
+            suggested_sl=None,
+            suggested_tp1=None,
+            suggested_tp2=None,
+            risk_reward_ratio=0.0,
+            points_checked={
+                "sweep": False, "choch": False, "fvg_retest": False,
+                "macro_alignment": False, "adr_news_clear": False
+            },
+            points_met=0,
+            invalidation_trigger=f"Daily ADR exhausted ({adr_used_pct:.0f}% used > 80% ceiling).",
+            reasons=[f"Daily ADR capacity at {adr_used_pct:.0f}% (exceeds 80% threshold). Standing aside."],
+            timestamp=now_ts
+        )
+
+    # Check Session Equilibrium (Premium / Discount Zone)
+    asia_mid = None
+    if levels.asia_high is not None and levels.asia_low is not None and levels.asia_high > levels.asia_low:
+        asia_mid = (levels.asia_high + levels.asia_low) / 2.0
 
     direction = "NEUTRAL"
     if bullish_sweep:
@@ -164,13 +192,17 @@ def scan_market_setup(
     elif bearish_sweep:
         direction = "BEARISH_SHORT"
     else:
-        # Check if structural CHoCH displacement exists without a recent sweep
+        # Check structural CHoCH displacement ONLY if price is in the correct Premium / Discount zone!
         bullish_choch, _ = detect_m5_choch(m5_df, "BULLISH")
         bearish_choch, _ = detect_m5_choch(m5_df, "BEARISH")
         if bullish_choch and not bearish_choch:
-            direction = "BULLISH_LONG"
+            # Longs only permitted in Discount zone (below Asian Midpoint)
+            if asia_mid is None or current_price <= (asia_mid + 1.0):
+                direction = "BULLISH_LONG"
         elif bearish_choch and not bullish_choch:
-            direction = "BEARISH_SHORT"
+            # Shorts only permitted in Premium zone (above Asian Midpoint)
+            if asia_mid is None or current_price >= (asia_mid - 1.0):
+                direction = "BEARISH_SHORT"
 
     if direction == "NEUTRAL":
         return SetupResult(
@@ -188,11 +220,14 @@ def scan_market_setup(
                 "choch": False,
                 "fvg_retest": False,
                 "macro_alignment": False,
-                "adr_news_clear": False
+                "adr_news_clear": bool(adr_used_pct < 80.0 and not news_guard_active)
             },
             points_met=0,
             invalidation_trigger="Awaiting Asian Range breakout or liquidity sweep trigger.",
-            reasons=["No structural liquidity sweep detected.", "Price consolidating within session boundaries."],
+            reasons=[
+                "No structural liquidity sweep detected.",
+                "Price in equilibrium / outside Premium-Discount execution zone."
+            ],
             timestamp=now_ts
         )
 

@@ -25,6 +25,9 @@ class DashboardChart {
     this.ema200Data = [];
     this.priceLines = [];
     this.setupOverlayEl = null;
+    this.lastActiveTrade = null;
+    this.lastSetup = null;
+    this.lastLivePrice = null;
 
     // Legend element
     this.legendEl = null;
@@ -274,6 +277,11 @@ class DashboardChart {
           const lastE50 = this.ema50Data.length > 0 ? this.ema50Data[this.ema50Data.length - 1].value : null;
           const lastE200 = this.ema200Data.length > 0 ? this.ema200Data[this.ema200Data.length - 1].value : null;
           this.updateLegend(lastCandle, lastE50, lastE200);
+
+          // Re-render active trade / setup price lines after chart data reset
+          if (this.lastActiveTrade || this.lastSetup) {
+            this.renderActivePositionOverlay(this.lastActiveTrade, this.lastSetup, this.lastLivePrice);
+          }
         }
       }
     } catch (e) {
@@ -407,6 +415,10 @@ class DashboardChart {
   // Interactive Trade Setup & Live Position Overlay (Lines & HUD)
   // ==========================================================================
   renderActivePositionOverlay(activeTrade, setup, currentLivePrice) {
+    this.lastActiveTrade = activeTrade || null;
+    this.lastSetup = setup || null;
+    this.lastLivePrice = currentLivePrice || null;
+
     if (!this.candleSeries) return;
 
     // 1. Remove existing price lines
