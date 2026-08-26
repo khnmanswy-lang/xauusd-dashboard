@@ -562,6 +562,30 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // ==========================================================================
+  // CSV Trade Journal Export Handlers
+  // ==========================================================================
+  function exportTradeJournal() {
+    addAlert("Exporting XAUUSD Trade Journal (CSV)...", "general");
+    const downloadUrl = "/api/journal/export";
+    const a = document.createElement("a");
+    a.href = downloadUrl;
+    a.download = `xauusd_trade_journal_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+
+  const btnExportTop = document.getElementById("btn-export-journal-top");
+  if (btnExportTop) {
+    btnExportTop.addEventListener("click", exportTradeJournal);
+  }
+
+  const btnExportCard = document.getElementById("btn-export-journal");
+  if (btnExportCard) {
+    btnExportCard.addEventListener("click", exportTradeJournal);
+  }
+
   // Start WebSocket
   connectWebSocket();
 });

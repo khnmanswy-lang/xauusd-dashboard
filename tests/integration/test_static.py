@@ -12,6 +12,8 @@ def test_serve_index_html():
         assert "XAUUSD TERMINAL" in response.text
         assert "AI SETUP SCANNER" in response.text
         assert "btn-rescan-ai" in response.text
+        assert "btn-export-journal" in response.text
+        assert "CSV Journal" in response.text
         assert "chart.js" in response.text
         assert "app.js" in response.text
 
@@ -23,6 +25,7 @@ def test_serve_css():
         assert "--bg-app" in response.text
         assert "--gold-accent" in response.text
         assert ".ai-card" in response.text
+        assert ".btn-export-csv" in response.text
         assert ".btn-rescan" in response.text
 
 
@@ -36,3 +39,4 @@ def test_serve_js():
         assert res_app.status_code == 200
         assert "connectWebSocket" in res_app.text
         assert "renderAiAnalysis" in res_app.text
+        assert "exportTradeJournal" in res_app.text

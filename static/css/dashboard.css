@@ -744,6 +744,49 @@ body {
   color: #000;
 }
 
+.btn-export-csv {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(240, 185, 11, 0.12);
+  border: 1px solid rgba(240, 185, 11, 0.35);
+  color: var(--gold-accent);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 9px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-export-csv:hover {
+  background: var(--gold-accent);
+  color: #000;
+  box-shadow: 0 0 10px rgba(240, 185, 11, 0.3);
+}
+
+.btn-mini-export {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: rgba(0, 192, 118, 0.12);
+  border: 1px solid rgba(0, 192, 118, 0.35);
+  color: var(--bullish-green);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-mini-export:hover {
+  background: var(--bullish-green);
+  color: #000;
+}
+
 .ai-card {
   border: 1px solid rgba(240, 185, 11, 0.25);
   background: linear-gradient(180deg, #131b29 0%, #0d131e 100%);

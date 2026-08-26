@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Dict, List, Set, Any, Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -24,6 +24,7 @@ from src.integrations.macro_feed import MacroFeed
 from src.integrations.economic_calendar import EconomicCalendar
 from src.integrations.ai_client import AiClient
 from src.core.ai_analyzer import AiSetupAnalyzer
+from src.core.trade_journal import TradeJournalManager, JournalEntry
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("server")
@@ -38,6 +39,7 @@ economic_calendar = EconomicCalendar()
 market_engine = MarketDataEngine(macro_feed=macro_feed, calendar=economic_calendar)
 ai_client = AiClient()
 ai_analyzer = AiSetupAnalyzer(market_engine=market_engine, ai_client=ai_client)
+trade_journal = TradeJournalManager()
 scheduler = AsyncIOScheduler()
 
 
@@ -196,6 +198,32 @@ async def post_calculate_risk(req: RiskCalculateRequest) -> Dict[str, Any]:
         current_price=current_p
     )
     return result.to_dict()
+
+
+@app.get("/api/journal/list")
+async def get_journal_list(limit: int = Query(default=100, ge=1, le=500)) -> List[Dict[str, Any]]:
+    """Returns a list of recorded trade journal entries."""
+    return trade_journal.get_entries(limit=limit)
+
+
+@app.get("/api/journal/export")
+async def get_journal_export():
+    """Exports trade journal history as a formatted downloadable CSV file."""
+    csv_content = trade_journal.export_csv_string()
+    from datetime import datetime, timezone
+    filename = f"xauusd_trade_journal_{datetime.now(timezone.utc).strftime('%Y%m%d')}.csv"
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
+@app.post("/api/journal/record")
+async def post_record_trade(entry_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Records a trade setup or executed trade into the journal."""
+    entry = trade_journal.add_entry(entry_data)
+    return {"status": "success", "entry": entry.to_dict()}
 
 
 # WebSocket Stream Route

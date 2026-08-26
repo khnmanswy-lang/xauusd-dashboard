@@ -57,6 +57,10 @@
         <span id="news-timer" class="num" style="font-weight: 700;">03:15:00</span>
       </div>
 
+      <button id="btn-export-journal-top" class="btn-export-csv" title="Export Full Trade Journal History as CSV">
+        <span>📥</span> CSV Journal
+      </button>
+
       <div id="ws-indicator" class="ws-status-indicator" title="WebSocket Connected"></div>
     </div>
   </header>
@@ -325,11 +329,11 @@
         </div>
       </div>
 
-      <!-- Real-Time Alerts Feed -->
+      <!-- Real-Time Alerts & Journal Feed -->
       <div class="card" style="flex: 1; min-height: 120px;">
-        <div class="card-header">
-          <span>Live Signal & Event Feed</span>
-          <span style="font-size: 9px; color: var(--text-muted);">AUTO-STREAM</span>
+        <div class="card-header" style="justify-content: space-between;">
+          <span>Live Signal & Trade Journal</span>
+          <button id="btn-export-journal" class="btn-mini-export" title="Download CSV Trade Journal">📥 Export CSV</button>
         </div>
         <div class="card-body" style="padding: 6px;">
           <div id="alert-feed-list" class="alert-feed-list">

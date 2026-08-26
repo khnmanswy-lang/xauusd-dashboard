@@ -95,3 +95,47 @@ def test_websocket_stream(client):
         pong_text = websocket.receive_text()
         pong = json.loads(pong_text)
         assert pong.get("type") == "pong" or "xauusd" in pong
+
+
+def test_api_journal_endpoints(client):
+    # 1. Test POST /api/journal/record
+    entry_payload = {
+        "symbol": "XAU_USD",
+        "session": "LONDON",
+        "killzone": "LONDON_OPEN",
+        "setup_grade": "GRADE_A",
+        "direction": "BULLISH_LONG",
+        "confidence_pct": 95,
+        "entry_price": 2932.40,
+        "stop_loss": 2928.00,
+        "take_profit_1": 2941.20,
+        "take_profit_2": 2945.00,
+        "risk_distance_usd": 4.40,
+        "outcome": "TP1_HIT",
+        "realized_r": 2.0,
+        "confluence_factors": "M5 CHoCH + FVG 65% Retest + VWAP Alignment",
+        "ai_thesis": "Clean expansion out of London liquidity sweep."
+    }
+    res_rec = client.post("/api/journal/record", json=entry_payload)
+    assert res_rec.status_code == 200
+    rec_data = res_rec.json()
+    assert rec_data["status"] == "success"
+    assert rec_data["entry"]["direction"] == "BULLISH_LONG"
+
+    # 2. Test GET /api/journal/list
+    res_list = client.get("/api/journal/list?limit=10")
+    assert res_list.status_code == 200
+    entries = res_list.json()
+    assert isinstance(entries, list)
+    assert len(entries) >= 1
+    assert entries[0]["symbol"] == "XAU_USD"
+
+    # 3. Test GET /api/journal/export
+    res_export = client.get("/api/journal/export")
+    assert res_export.status_code == 200
+    assert res_export.headers["content-type"].startswith("text/csv")
+    assert "attachment; filename=xauusd_trade_journal_" in res_export.headers.get("content-disposition", "")
+    csv_text = res_export.text
+    assert "timestamp_utc" in csv_text
+    assert "BULLISH_LONG" in csv_text
+    assert "2932.4" in csv_text
