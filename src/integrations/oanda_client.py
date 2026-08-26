@@ -227,3 +227,144 @@ class OandaClient:
                 await self._stream_task
             except asyncio.CancelledError:
                 pass
+
+    # =========================================================================
+    # Account & Order Execution Management (Practice / Live)
+    # =========================================================================
+    async def get_account_summary(self) -> Optional[Dict[str, Any]]:
+        """
+        Fetch account summary including real-time balance and open position counts.
+        Endpoint: GET /v3/accounts/{accountID}/summary
+        """
+        if not self.is_configured():
+            return None
+
+        url = f"{self.settings.rest_base_url}/accounts/{self.settings.account_id}/summary"
+        try:
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                res = await client.get(url, headers=self._get_headers())
+                if res.status_code == 200:
+                    data = res.json()
+                    return data.get("account", {})
+                else:
+                    logger.warning("OANDA get_account_summary HTTP %d: %s", res.status_code, res.text[:200])
+        except Exception as e:
+            logger.error("Error fetching OANDA account summary: %s", e)
+        return None
+
+    async def get_open_trades(self, instrument: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Fetch all active open trades for the instrument to ensure idempotency.
+        Endpoint: GET /v3/accounts/{accountID}/openTrades
+        """
+        if not self.is_configured():
+            return []
+
+        url = f"{self.settings.rest_base_url}/accounts/{self.settings.account_id}/openTrades"
+        try:
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                res = await client.get(url, headers=self._get_headers())
+                if res.status_code == 200:
+                    data = res.json()
+                    trades = data.get("trades", [])
+                    sym = instrument or self.settings.symbol
+                    return [t for t in trades if t.get("instrument") == sym]
+                else:
+                    logger.warning("OANDA get_open_trades HTTP %d: %s", res.status_code, res.text[:200])
+        except Exception as e:
+            logger.error("Error fetching OANDA open trades: %s", e)
+        return []
+
+    async def create_order(
+        self,
+        units: float,
+        stop_loss: Optional[float] = None,
+        take_profit: Optional[float] = None,
+        entry_type: str = "MARKET",
+        price: Optional[float] = None,
+        instrument: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Submit a new market or limit order with bracket Stop Loss and Take Profit.
+        Endpoint: POST /v3/accounts/{accountID}/orders
+        """
+        if not self.is_configured():
+            logger.info("OANDA not configured; order creation skipped.")
+            return None
+
+        sym = instrument or self.settings.symbol
+        url = f"{self.settings.rest_base_url}/accounts/{self.settings.account_id}/orders"
+
+        # Units: positive for Buy/Long, negative for Sell/Short
+        # Format units safely as integer string (e.g. 10 or -10 for standard XAU units)
+        unit_str = str(int(round(units)))
+
+        order_body: Dict[str, Any] = {
+            "type": entry_type.upper(),
+            "instrument": sym,
+            "units": unit_str,
+            "positionFill": "DEFAULT"
+        }
+
+        if entry_type.upper() == "MARKET":
+            order_body["timeInForce"] = "FOK"
+        elif entry_type.upper() == "LIMIT" and price:
+            order_body["timeInForce"] = "GTC"
+            order_body["price"] = f"{price:.2f}"
+
+        if stop_loss is not None:
+            order_body["stopLossOnFill"] = {
+                "price": f"{stop_loss:.2f}",
+                "timeInForce": "GTC"
+            }
+
+        if take_profit is not None:
+            order_body["takeProfitOnFill"] = {
+                "price": f"{take_profit:.2f}",
+                "timeInForce": "GTC"
+            }
+
+        payload = {"order": order_body}
+
+        try:
+            logger.info("Submitting OANDA %s order: %s units of %s | SL: %s | TP: %s", entry_type, unit_str, sym, stop_loss, take_profit)
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                res = await client.post(url, headers=self._get_headers(), json=payload)
+                if res.status_code in [200, 201]:
+                    data = res.json()
+                    logger.info("OANDA Order successfully filled/created: %s", data.get("orderFillTransaction", {}).get("id") or data.get("orderCreateTransaction", {}).get("id"))
+                    return data
+                else:
+                    logger.error("OANDA order creation failed HTTP %d: %s", res.status_code, res.text)
+        except Exception as e:
+            logger.error("Exception during OANDA order submission: %s", e)
+        return None
+
+    async def update_trade_stop_loss(self, trade_id: str, stop_loss_price: float) -> bool:
+        """
+        Update the Stop Loss order on an active running trade (e.g. trail to Break-Even).
+        Endpoint: PUT /v3/accounts/{accountID}/trades/{tradeID}/orders
+        """
+        if not self.is_configured():
+            return False
+
+        url = f"{self.settings.rest_base_url}/accounts/{self.settings.account_id}/trades/{trade_id}/orders"
+        payload = {
+            "stopLoss": {
+                "price": f"{stop_loss_price:.2f}",
+                "timeInForce": "GTC"
+            }
+        }
+
+        try:
+            logger.info("Updating OANDA Trade #%s Stop Loss to $%.2f", trade_id, stop_loss_price)
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                res = await client.put(url, headers=self._get_headers(), json=payload)
+                if res.status_code == 200:
+                    logger.info("Successfully updated Stop Loss for Trade #%s", trade_id)
+                    return True
+                else:
+                    logger.warning("Failed to update Stop Loss for Trade #%s HTTP %d: %s", trade_id, res.status_code, res.text[:200])
+        except Exception as e:
+            logger.error("Exception updating Stop Loss on OANDA: %s", e)
+        return False

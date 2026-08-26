@@ -139,3 +139,22 @@ def test_api_journal_endpoints(client):
     assert "timestamp_utc" in csv_text
     assert "BULLISH_LONG" in csv_text
     assert "2932.4" in csv_text
+
+
+def test_api_autotrader_endpoints(client):
+    # Test GET /api/autotrader/status
+    res_status = client.get("/api/autotrader/status")
+    assert res_status.status_code == 200
+    status_data = res_status.json()
+    assert "enabled" in status_data
+    assert "risk_per_trade_pct" in status_data
+
+    # Test POST /api/autotrader/toggle
+    res_toggle = client.post("/api/autotrader/toggle?enabled=false")
+    assert res_toggle.status_code == 200
+    assert res_toggle.json()["enabled"] is False
+
+    # Toggle back on
+    res_toggle_on = client.post("/api/autotrader/toggle?enabled=true")
+    assert res_toggle_on.status_code == 200
+    assert res_toggle_on.json()["enabled"] is True

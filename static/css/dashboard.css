@@ -196,6 +196,46 @@ body {
   font-size: 12px;
 }
 
+.autotrader-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0, 192, 118, 0.1);
+  border: 1px solid rgba(0, 192, 118, 0.35);
+  color: var(--bullish-green);
+  padding: 4px 9px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s ease;
+}
+
+.autotrader-chip:hover {
+  background: rgba(0, 192, 118, 0.2);
+  border-color: var(--bullish-green);
+}
+
+.autotrader-chip.paused {
+  background: rgba(100, 116, 139, 0.1);
+  border-color: rgba(100, 116, 139, 0.3);
+  color: var(--text-muted);
+}
+
+.autotrader-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--bullish-green);
+  box-shadow: 0 0 6px var(--bullish-green);
+}
+
+.autotrader-chip.paused .autotrader-dot {
+  background: var(--neutral-gray);
+  box-shadow: none;
+}
+
 .news-alert-active {
   background: var(--bearish-bg) !important;
   border-color: var(--bearish-red) !important;

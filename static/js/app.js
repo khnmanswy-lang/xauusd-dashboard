@@ -132,6 +132,16 @@ document.addEventListener('DOMContentLoaded', () => {
           return;
         }
 
+        if (message.type === 'AUTO_TRADE_UPDATE') {
+          const tData = message.data;
+          if (tData.status === 'EXECUTED') {
+            addAlert(`🚀 Auto-Executed: [${tData.direction}] ${tData.units} units @ $${tData.entry_price.toFixed(2)} | SL: $${tData.stop_loss.toFixed(2)}`, 'sweep');
+          } else if (tData.status === 'TRAILING_UPDATED') {
+            addAlert(`🛡️ Trailed SL to Break-Even: Trade #${tData.trade_id} (SL: $${tData.new_stop_loss.toFixed(2)}) | Profit: +$${tData.profit_usd.toFixed(2)}`, 'sweep');
+          }
+          return;
+        }
+
         latestState = message;
         renderState(message);
       } catch (e) {
@@ -585,6 +595,53 @@ document.addEventListener('DOMContentLoaded', () => {
   if (btnExportCard) {
     btnExportCard.addEventListener("click", exportTradeJournal);
   }
+
+  // ==========================================================================
+  // AutoTrader Status & Toggle Controller
+  // ==========================================================================
+  const elAutoTraderChip = document.getElementById('autotrader-chip');
+  const elAutoTraderLabel = document.getElementById('autotrader-label');
+
+  async function initAutoTrader() {
+    try {
+      const res = await fetch('/api/autotrader/status');
+      if (res.ok) {
+        const data = await res.json();
+        updateAutoTraderUI(data.enabled);
+      }
+    } catch (e) {
+      console.debug("Could not fetch autotrader status:", e);
+    }
+  }
+
+  function updateAutoTraderUI(enabled) {
+    if (!elAutoTraderChip) return;
+    if (enabled) {
+      elAutoTraderChip.className = 'autotrader-chip active';
+      if (elAutoTraderLabel) elAutoTraderLabel.textContent = 'AUTO-TRADER: ON';
+    } else {
+      elAutoTraderChip.className = 'autotrader-chip paused';
+      if (elAutoTraderLabel) elAutoTraderLabel.textContent = 'AUTO-TRADER: OFF';
+    }
+  }
+
+  if (elAutoTraderChip) {
+    elAutoTraderChip.addEventListener('click', async () => {
+      try {
+        const res = await fetch('/api/autotrader/toggle', { method: 'POST' });
+        if (res.ok) {
+          const data = await res.json();
+          updateAutoTraderUI(data.enabled);
+          addAlert(`Auto-Trader ${data.enabled ? 'ENABLED' : 'PAUSED'} on OANDA Practice Account.`, 'general');
+        }
+      } catch (e) {
+        console.error("Error toggling autotrader:", e);
+      }
+    });
+  }
+
+  // Initialize
+  initAutoTrader();
 
   // Start WebSocket
   connectWebSocket();

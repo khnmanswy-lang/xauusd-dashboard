@@ -23,8 +23,10 @@ from src.integrations.market_data import MarketDataEngine
 from src.integrations.macro_feed import MacroFeed
 from src.integrations.economic_calendar import EconomicCalendar
 from src.integrations.ai_client import AiClient
+from src.integrations.oanda_client import OandaClient
 from src.core.ai_analyzer import AiSetupAnalyzer
 from src.core.trade_journal import TradeJournalManager, JournalEntry
+from src.core.auto_trader import AutoTrader
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("server")
@@ -40,6 +42,14 @@ market_engine = MarketDataEngine(macro_feed=macro_feed, calendar=economic_calend
 ai_client = AiClient()
 ai_analyzer = AiSetupAnalyzer(market_engine=market_engine, ai_client=ai_client)
 trade_journal = TradeJournalManager()
+oanda_client = OandaClient(settings.oanda)
+auto_trader = AutoTrader(
+    market_engine=market_engine,
+    ai_analyzer=ai_analyzer,
+    oanda_client=oanda_client,
+    trade_journal=trade_journal,
+    enabled=True
+)
 scheduler = AsyncIOScheduler()
 
 
@@ -95,22 +105,35 @@ async def lifespan(app: FastAPI):
     market_engine.add_listener(_on_market_update)
     ai_analyzer.add_listener(_on_ai_update)
 
-    # Run initial AI market evaluation pass
-    try:
-        await ai_analyzer.evaluate_market()
-    except Exception as e:
-        logger.debug("Initial AI evaluation pass: %s", e)
+    # Combined 60-second cron runner: evaluates market setups & runs auto-trader sentry
+    async def _scheduled_cron_pass():
+        try:
+            await ai_analyzer.evaluate_market()
+            trade_res = await auto_trader.evaluate_and_trade()
+            if trade_res.get("status") in ["EXECUTED", "TRAILING_UPDATED"]:
+                await manager.broadcast({
+                    "type": "AUTO_TRADE_UPDATE",
+                    "data": trade_res
+                })
+        except Exception as e:
+            logger.error("Error during scheduled cron pass: %s", e)
 
-    # Start 60-second / 1-minute background cron scanner
+    # Run initial evaluation
+    try:
+        await _scheduled_cron_pass()
+    except Exception as e:
+        logger.debug("Initial evaluation pass: %s", e)
+
+    # Start 60-second background cron scanner
     scheduler.add_job(
-        ai_analyzer.evaluate_market,
+        _scheduled_cron_pass,
         trigger="interval",
         seconds=settings.ai.scanner_interval_seconds,
         id="ai_market_evaluator",
         replace_existing=True
     )
     scheduler.start()
-    logger.info("APScheduler started: AI market evaluation running every %ds.", settings.ai.scanner_interval_seconds)
+    logger.info("APScheduler started: AI market evaluation and AutoTrader running every %ds.", settings.ai.scanner_interval_seconds)
 
     yield
 
@@ -224,6 +247,25 @@ async def post_record_trade(entry_data: Dict[str, Any]) -> Dict[str, Any]:
     """Records a trade setup or executed trade into the journal."""
     entry = trade_journal.add_entry(entry_data)
     return {"status": "success", "entry": entry.to_dict()}
+
+
+@app.get("/api/autotrader/status")
+async def get_autotrader_status() -> Dict[str, Any]:
+    """Returns the current state and metrics of the AutoTrader sentry."""
+    return {
+        "enabled": auto_trader.enabled,
+        "oanda_configured": oanda_client.is_configured(),
+        "last_trade_time": auto_trader.last_trade_time,
+        "risk_per_trade_pct": auto_trader.risk_per_trade_pct,
+        "cooldown_seconds": auto_trader.cooldown_seconds
+    }
+
+
+@app.post("/api/autotrader/toggle")
+async def post_autotrader_toggle(enabled: Optional[bool] = None) -> Dict[str, Any]:
+    """Toggles or explicitly sets AutoTrader execution state."""
+    new_state = auto_trader.toggle(enabled)
+    return {"status": "success", "enabled": new_state}
 
 
 # WebSocket Stream Route
