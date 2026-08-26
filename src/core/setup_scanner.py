@@ -112,7 +112,8 @@ def check_fvg_retest(
     tolerance_usd: float = 1.50
 ) -> Tuple[bool, Optional[FairValueGap], Optional[float]]:
     """
-    Check if price is actively retesting an unmitigated FVG or its 50% Consequent Encroachment (CE).
+    Check if price is actively retesting an unmitigated FVG or its deep 65% Consequent Encroachment (CE).
+    Anchors entry deeper towards the Order Block origin to maximize Risk:Reward and filter false breakouts.
     """
     if not fvgs:
         return False, None, None
@@ -120,10 +121,15 @@ def check_fvg_retest(
     target_type = "BULLISH" if direction == "BULLISH" else "BEARISH"
     for fvg in reversed(fvgs):
         if fvg.type == target_type and not fvg.mitigated:
-            ce_level = round((fvg.top + fvg.bottom) / 2.0, 2)
+            # Anchor to 65% deep mitigation (closer to invalidation base)
+            if target_type == "BULLISH":
+                deep_entry = round(fvg.bottom + (fvg.top - fvg.bottom) * 0.35, 2)
+            else:
+                deep_entry = round(fvg.top - (fvg.top - fvg.bottom) * 0.35, 2)
+
             # Check if current price is within [bottom - tol, top + tol]
             if (fvg.bottom - tolerance_usd) <= current_price <= (fvg.top + tolerance_usd):
-                return True, fvg, ce_level
+                return True, fvg, deep_entry
 
     return False, None, None
 
@@ -138,27 +144,32 @@ def scan_market_setup(
     adr_used_pct: float,
     news_guard_active: bool,
     atr_m5: float = 2.0,
-    timestamp: Optional[int] = None
+    min_confidence: float = 0.60
 ) -> SetupResult:
     """
-    Evaluates market conditions against the 5-point Institutional Confluence model.
+    Evaluates institutional 5-point confluence strategy:
+    1. Liquidity Sweep (Asian Range High/Low or PDH/PDL)
+    2. M5 CHoCH Displacement
+    3. Deep Fair Value Gap Retest (65% CE Order Block origin)
+    4. Macro Alignment (Session VWAP / H1 200 EMA)
+    5. Volatility / News Blackout Guard
     """
-    now_ts = timestamp or int(datetime.now(timezone.utc).timestamp())
-    sweep = levels.recent_sweep
-
-    # Determine potential setup direction based on sweep or trend
-    bullish_sweep = sweep in ["ASIA_LOW_SWEPT", "PDL_SWEPT"]
-    bearish_sweep = sweep in ["ASIA_HIGH_SWEPT", "PDH_SWEPT"]
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+    bullish_sweep = levels.recent_sweep in ["ASIA_LOW_SWEPT", "PDL_SWEPT"]
+    bearish_sweep = levels.recent_sweep in ["ASIA_HIGH_SWEPT", "PDH_SWEPT"]
 
     direction = "NEUTRAL"
     if bullish_sweep:
         direction = "BULLISH_LONG"
     elif bearish_sweep:
         direction = "BEARISH_SHORT"
-    elif m15_vwap is not None and h1_ema200 is not None:
-        if current_price > m15_vwap and current_price > h1_ema200:
+    else:
+        # Check if structural CHoCH displacement exists without a recent sweep
+        bullish_choch, _ = detect_m5_choch(m5_df, "BULLISH")
+        bearish_choch, _ = detect_m5_choch(m5_df, "BEARISH")
+        if bullish_choch and not bearish_choch:
             direction = "BULLISH_LONG"
-        elif current_price < m15_vwap and current_price < h1_ema200:
+        elif bearish_choch and not bullish_choch:
             direction = "BEARISH_SHORT"
 
     if direction == "NEUTRAL":
@@ -167,6 +178,11 @@ def scan_market_setup(
             direction="NEUTRAL",
             confidence_score=0.20,
             setup_type="Market Consolidating / Neutral Regime",
+            suggested_entry=None,
+            suggested_sl=None,
+            suggested_tp1=None,
+            suggested_tp2=None,
+            risk_reward_ratio=0.0,
             points_checked={
                 "sweep": False,
                 "choch": False,
@@ -187,8 +203,8 @@ def scan_market_setup(
     choch_dir = "BULLISH" if direction == "BULLISH_LONG" else "BEARISH"
     choch_ok, choch_level = detect_m5_choch(m5_df, direction=choch_dir)
 
-    # 3. FVG Retest Point
-    fvg_ok, matched_fvg, ce_level = check_fvg_retest(fvgs, current_price, direction=choch_dir)
+    # 3. FVG Retest Point (Deep 65% CE)
+    fvg_ok, matched_fvg, deep_entry = check_fvg_retest(fvgs, current_price, direction=choch_dir)
 
     # 4. Macro Confluence Point
     macro_ok = False
@@ -213,16 +229,16 @@ def scan_market_setup(
     }
     points_met = sum(1 for v in points.values() if v)
 
-    # Calculate Execution Levels
-    sl_distance = max(2.50, round(atr_m5 * 1.5, 2))
+    # Calculate Execution Levels with Tighter Stop Loss Anchoring
+    sl_distance = max(2.00, round(atr_m5 * 1.25, 2))
     reasons = []
 
     if direction == "BULLISH_LONG":
-        entry_price = ce_level if (fvg_ok and ce_level) else current_price
+        entry_price = deep_entry if (fvg_ok and deep_entry) else round(current_price - (atr_m5 * 0.35), 2)
         
-        # Stop loss anchored below recent sweep or local 1.5x ATR invalidation
-        if sweep_ok and levels.asia_low is not None and (entry_price - levels.asia_low) <= (sl_distance * 2.5):
-            sl_price = round(levels.asia_low - 0.50, 2)
+        # Stop loss anchored below recent sweep or tight ATR invalidation
+        if sweep_ok and levels.asia_low is not None and (entry_price - levels.asia_low) <= (sl_distance * 2.0):
+            sl_price = round(levels.asia_low - 0.30, 2)
         else:
             sl_price = round(entry_price - sl_distance, 2)
         
@@ -238,18 +254,18 @@ def scan_market_setup(
         if choch_ok:
             reasons.append(f"Bullish M5 CHoCH confirmed above ${choch_level:.2f}.")
         if fvg_ok:
-            reasons.append(f"Price retraced to unmitigated Bullish FVG 50% CE (${ce_level:.2f}).")
+            reasons.append(f"Price retraced to deep Bullish FVG 65% CE (${deep_entry:.2f}).")
         if macro_ok:
             reasons.append("Macro alignment with Session VWAP / H1 200 EMA.")
         if adr_news_ok:
             reasons.append(f"ADR capacity healthy ({adr_used_pct:.0f}% used) with no imminent news.")
 
     else:  # BEARISH_SHORT
-        entry_price = ce_level if (fvg_ok and ce_level) else current_price
+        entry_price = deep_entry if (fvg_ok and deep_entry) else round(current_price + (atr_m5 * 0.35), 2)
         
-        # Stop loss anchored above recent sweep or local 1.5x ATR invalidation
-        if sweep_ok and levels.asia_high is not None and (levels.asia_high - entry_price) <= (sl_distance * 2.5):
-            sl_price = round(levels.asia_high + 0.50, 2)
+        # Stop loss anchored above recent sweep or tight ATR invalidation
+        if sweep_ok and levels.asia_high is not None and (levels.asia_high - entry_price) <= (sl_distance * 2.0):
+            sl_price = round(levels.asia_high + 0.30, 2)
         else:
             sl_price = round(entry_price + sl_distance, 2)
 
@@ -263,7 +279,7 @@ def scan_market_setup(
         if choch_ok:
             reasons.append(f"Bearish M5 CHoCH confirmed below ${choch_level:.2f}.")
         if fvg_ok:
-            reasons.append(f"Price retraced to unmitigated Bearish FVG 50% CE (${ce_level:.2f}).")
+            reasons.append(f"Price retraced to deep Bearish FVG 65% CE (${deep_entry:.2f}).")
         if macro_ok:
             reasons.append("Macro alignment below Session VWAP / H1 200 EMA.")
         if adr_news_ok:

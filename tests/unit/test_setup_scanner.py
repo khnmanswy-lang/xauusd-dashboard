@@ -78,11 +78,11 @@ def test_detect_m5_choch_bearish():
 def test_check_fvg_retest():
     fvg_bullish = FairValueGap(type="BULLISH", top=2935.0, bottom=2930.0, timestamp=1740000000, mitigated=False)
     
-    # 1. Price is inside the FVG (2932.50 = CE)
-    hit, matched, ce = check_fvg_retest([fvg_bullish], current_price=2932.50, direction="BULLISH")
+    # 1. Price is inside the FVG (2931.75 = deep 65% CE)
+    hit, matched, entry = check_fvg_retest([fvg_bullish], current_price=2932.50, direction="BULLISH")
     assert hit is True
     assert matched == fvg_bullish
-    assert ce == 2932.50
+    assert entry == 2931.75
 
     # 2. Price far away from FVG
     hit_far, _, _ = check_fvg_retest([fvg_bullish], current_price=2960.00, direction="BULLISH")
@@ -120,7 +120,7 @@ def test_scan_market_setup_grade_a_bullish():
     assert result.points_checked["macro_alignment"] is True
     assert result.points_checked["adr_news_clear"] is True
     assert result.points_met == 5
-    assert result.suggested_entry == 2933.0
+    assert result.suggested_entry == 2932.40
     assert result.suggested_sl < result.suggested_entry
     assert result.suggested_tp1 > result.suggested_entry
     assert result.suggested_tp2 == 2945.0  # Asian High target
@@ -149,7 +149,7 @@ def test_scan_market_setup_grade_a_bearish():
     assert result.points_checked["sweep"] is True
     assert result.points_checked["choch"] is True
     assert result.points_checked["fvg_retest"] is True
-    assert result.suggested_entry == 2939.0
+    assert result.suggested_entry == 2939.90
     assert result.suggested_sl > result.suggested_entry
     assert result.suggested_tp1 < result.suggested_entry
     assert result.suggested_tp2 == 2928.0  # Asian Low target

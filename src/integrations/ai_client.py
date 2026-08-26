@@ -396,11 +396,11 @@ class AiClient:
             suggested_tp1 = scan.get("suggested_tp1", price + 6.0)
             suggested_tp2 = scan.get("suggested_tp2", price + 10.0)
 
-            # If price is slightly far from FVG 50% CE, form a WAITING_FOR_TRIGGER plan to handover!
+            # If price is slightly far from deep FVG 65% CE, form a WAITING_FOR_TRIGGER plan to handover!
             if abs(price - suggested_entry) > 1.50:
                 plan_status = "WAITING_FOR_TRIGGER"
                 headline = f"PLAN HANDOVER: Awaiting {direction.replace('_', ' ')} Pullback"
-                handover_notes = f"Displacement confirmed. Awaiting pullback into FVG 50% CE (${suggested_entry:.2f}). Invalidation at ${suggested_sl:.2f}."
+                handover_notes = f"Displacement confirmed. Awaiting deep pullback into FVG 65% CE (${suggested_entry:.2f}). Invalidation at ${suggested_sl:.2f}."
             else:
                 plan_status = "READY_TO_EXECUTE"
                 if sweep:
