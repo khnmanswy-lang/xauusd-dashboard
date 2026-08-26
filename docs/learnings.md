@@ -78,3 +78,6 @@
 4. **Stateful Plan Handover & Invalidation Rejection:**
    - Maintain `WAITING_FOR_TRIGGER` across 1-minute cron passes.
    - If market breaks the invalidation level before trigger, automatically transition to `PLAN_REJECTED` with zero risk capital lost.
+5. **Deep 65%–70% FVG Mitigation Anchoring (Applied):**
+   - Entry orders anchor to the deep 65%–70% Consequent Encroachment (CE) zone near the Order Block origin.
+   - Tighter Stop Loss bounds ($\approx \$3.95$) significantly increase realized Risk:Reward ($\ge 1:2.5$) and eliminate entries on false break-of-structure traps.
