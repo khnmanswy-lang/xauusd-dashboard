@@ -23,6 +23,8 @@ class DashboardChart {
     this.volumeData = [];
     this.ema50Data = [];
     this.ema200Data = [];
+    this.priceLines = [];
+    this.setupOverlayEl = null;
 
     // Legend element
     this.legendEl = null;
@@ -399,6 +401,141 @@ class DashboardChart {
   toggleEma200(enabled) {
     this.showEma200 = enabled;
     this.renderEmaSeries();
+  }
+
+  // ==========================================================================
+  // Interactive Trade Setup Overlay (Entry, Stop Loss, Take Profit Rate Lines)
+  // ==========================================================================
+  renderTradeSetupOverlay(setup) {
+    if (!this.candleSeries) return;
+
+    // 1. Remove existing price lines
+    if (this.priceLines && this.priceLines.length > 0) {
+      this.priceLines.forEach(pl => {
+        try { this.candleSeries.removePriceLine(pl); } catch (e) {}
+      });
+    }
+    this.priceLines = [];
+
+    // Check if we have an active execution plan
+    const exec = (setup && setup.execution_plan) ? setup.execution_plan : null;
+    const isPlayable = setup && setup.setup_grade && setup.setup_grade !== 'NO_SETUP' && setup.plan_status !== 'PLAN_REJECTED' && exec && exec.entry && exec.stop_loss;
+
+    if (!isPlayable) {
+      if (this.setupOverlayEl) {
+        this.setupOverlayEl.style.display = 'none';
+      }
+      return;
+    }
+
+    const entry = exec.entry;
+    const sl = exec.stop_loss;
+    const tp1 = exec.take_profit_1;
+    const tp2 = exec.take_profit_2;
+    const isLong = setup.direction === 'BULLISH_LONG';
+    const riskDist = Math.abs(entry - sl);
+    const rewardDist = tp2 ? Math.abs(tp2 - entry) : (tp1 ? Math.abs(tp1 - entry) : riskDist * 2.0);
+    const rrRatio = riskDist > 0 ? (rewardDist / riskDist).toFixed(2) : '2.00';
+
+    // 2. Draw Entry Price Line (Gold Solid Line)
+    const entryLine = this.candleSeries.createPriceLine({
+      price: entry,
+      color: '#f0b90b',
+      lineWidth: 2,
+      lineStyle: LightweightCharts.LineStyle.Solid,
+      axisLabelVisible: true,
+      title: `⚡ ENTRY $${entry.toFixed(2)}`
+    });
+    this.priceLines.push(entryLine);
+
+    // 3. Draw Stop Loss Price Line (Red Solid Risk Boundary)
+    const slLine = this.candleSeries.createPriceLine({
+      price: sl,
+      color: '#f23645',
+      lineWidth: 2,
+      lineStyle: LightweightCharts.LineStyle.Solid,
+      axisLabelVisible: true,
+      title: `⛔ SL $${sl.toFixed(2)} (-$${riskDist.toFixed(2)})`
+    });
+    this.priceLines.push(slLine);
+
+    // 4. Draw Take Profit 1 Price Line (Green Dashed)
+    if (tp1) {
+      const tp1Line = this.candleSeries.createPriceLine({
+        price: tp1,
+        color: '#089981',
+        lineWidth: 1,
+        lineStyle: LightweightCharts.LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: `🎯 TP1 $${tp1.toFixed(2)}`
+      });
+      this.priceLines.push(tp1Line);
+    }
+
+    // 5. Draw Take Profit 2 / Target Price Line (Emerald Solid Target Zone)
+    if (tp2) {
+      const tp2Line = this.candleSeries.createPriceLine({
+        price: tp2,
+        color: '#00f090',
+        lineWidth: 2,
+        lineStyle: LightweightCharts.LineStyle.Solid,
+        axisLabelVisible: true,
+        title: `🎯 TP2 $${tp2.toFixed(2)} (+1:${rrRatio}R)`
+      });
+      this.priceLines.push(tp2Line);
+    }
+
+    // 6. Update Visual Setup DOM Overlay Box on Chart
+    if (!this.setupOverlayEl) {
+      this.setupOverlayEl = document.createElement('div');
+      this.setupOverlayEl.className = 'chart-setup-overlay num';
+      this.container.appendChild(this.setupOverlayEl);
+    }
+
+    const sideBadge = isLong ? '<span style="color: var(--bullish-green)">🟢 LONG SETUP</span>' : '<span style="color: var(--bearish-red)">🔴 SHORT SETUP</span>';
+    const gradeStr = setup.setup_grade ? setup.setup_grade.replace('_', ' ') : 'ACTIVE';
+
+    this.setupOverlayEl.innerHTML = `
+      <div class="setup-overlay-header">
+        <div class="setup-overlay-tag">${sideBadge} <span style="font-size: 9.5px; color: var(--text-secondary);">[${gradeStr}]</span></div>
+        <div class="setup-overlay-rr">R:R 1:${rrRatio}</div>
+      </div>
+      <div class="setup-overlay-grid">
+        <div class="setup-overlay-cell">
+          <span class="setup-overlay-lbl">ENTRY</span>
+          <span class="setup-overlay-val" style="color: var(--gold-accent);">$${entry.toFixed(2)}</span>
+        </div>
+        <div class="setup-overlay-cell">
+          <span class="setup-overlay-lbl">STOP LOSS (Risk)</span>
+          <span class="setup-overlay-val" style="color: var(--bearish-red);">$${sl.toFixed(2)}</span>
+        </div>
+        <div class="setup-overlay-cell">
+          <span class="setup-overlay-lbl">TP1 (1:2)</span>
+          <span class="setup-overlay-val" style="color: var(--bullish-green);">$${tp1 ? tp1.toFixed(2) : '--'}</span>
+        </div>
+        <div class="setup-overlay-cell">
+          <span class="setup-overlay-lbl">TP2 (Target)</span>
+          <span class="setup-overlay-val" style="color: #00f090;">$${tp2 ? tp2.toFixed(2) : '--'}</span>
+        </div>
+      </div>
+      <div class="setup-rr-visual-bar" title="Risk:Reward Ratio Visual Bar">
+        <div class="setup-rr-risk" style="flex: 1;"></div>
+        <div class="setup-rr-reward" style="flex: ${Math.max(1, parseFloat(rrRatio))};"></div>
+      </div>
+    `;
+    this.setupOverlayEl.style.display = 'flex';
+  }
+
+  clearTradeSetupOverlay() {
+    if (this.priceLines && this.priceLines.length > 0) {
+      this.priceLines.forEach(pl => {
+        try { this.candleSeries.removePriceLine(pl); } catch (e) {}
+      });
+      this.priceLines = [];
+    }
+    if (this.setupOverlayEl) {
+      this.setupOverlayEl.style.display = 'none';
+    }
   }
 
   initFallbackCanvas() {

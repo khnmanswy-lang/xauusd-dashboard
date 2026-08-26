@@ -412,6 +412,11 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
     if (elAiPsychologyText) elAiPsychologyText.textContent = aiData.psychology_warning || 'Maintain strict 1% risk discipline.';
+
+    // 7. Render Visual Trade Setup & Rate Zone Lines on Interactive Chart
+    if (dashboardChart && typeof dashboardChart.renderTradeSetupOverlay === 'function') {
+      dashboardChart.renderTradeSetupOverlay(aiData);
+    }
   }
 
   // ==========================================================================

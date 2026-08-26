@@ -27,6 +27,7 @@ def test_serve_css():
         assert "--gold-accent" in response.text
         assert ".ai-card" in response.text
         assert ".autotrader-chip" in response.text
+        assert ".chart-setup-overlay" in response.text
         assert ".btn-export-csv" in response.text
         assert ".btn-rescan" in response.text
 
@@ -36,6 +37,7 @@ def test_serve_js():
         res_chart = client.get("/static/js/chart.js")
         assert res_chart.status_code == 200
         assert "DashboardChart" in res_chart.text
+        assert "renderTradeSetupOverlay" in res_chart.text
 
         res_app = client.get("/static/js/app.js")
         assert res_app.status_code == 200

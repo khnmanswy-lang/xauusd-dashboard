@@ -602,6 +602,82 @@ body {
   gap: 4px;
 }
 
+.chart-setup-overlay {
+  position: absolute;
+  top: 42px;
+  right: 14px;
+  z-index: 10;
+  background: rgba(13, 19, 30, 0.90);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(240, 185, 11, 0.4);
+  border-radius: 6px;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  min-width: 220px;
+  pointer-events: none;
+  transition: all 0.2s ease;
+}
+
+.setup-overlay-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 4px;
+}
+
+.setup-overlay-tag {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+
+.setup-overlay-rr {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--gold-accent);
+}
+
+.setup-overlay-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 8px;
+  font-size: 10.5px;
+}
+
+.setup-overlay-cell {
+  display: flex;
+  flex-direction: column;
+}
+
+.setup-overlay-lbl {
+  font-size: 9px;
+  color: var(--text-muted);
+}
+
+.setup-overlay-val {
+  font-weight: 700;
+}
+
+.setup-rr-visual-bar {
+  display: flex;
+  height: 4px;
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 2px;
+}
+
+.setup-rr-risk {
+  background: var(--bearish-red);
+}
+
+.setup-rr-reward {
+  background: var(--bullish-green);
+}
+
 /* ==========================================================================
    Right Column: Execution, Lot Sizer, Alerts
    ========================================================================== */
