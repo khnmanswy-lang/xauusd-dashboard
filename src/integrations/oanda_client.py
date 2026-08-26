@@ -368,3 +368,27 @@ class OandaClient:
         except Exception as e:
             logger.error("Exception updating Stop Loss on OANDA: %s", e)
         return False
+
+    async def close_trade(self, trade_id: str, units: Optional[str] = "ALL") -> bool:
+        """
+        Close an open trade by ID.
+        Endpoint: PUT /v3/accounts/{accountID}/trades/{tradeID}/close
+        """
+        if not self.is_configured():
+            return False
+
+        url = f"{self.settings.rest_base_url}/accounts/{self.settings.account_id}/trades/{trade_id}/close"
+        payload = {"units": units} if units else {}
+
+        try:
+            logger.info("Closing OANDA Trade #%s", trade_id)
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                res = await client.put(url, headers=self._get_headers(), json=payload)
+                if res.status_code == 200:
+                    logger.info("Successfully closed Trade #%s on OANDA", trade_id)
+                    return True
+                else:
+                    logger.warning("Failed to close Trade #%s HTTP %d: %s", trade_id, res.status_code, res.text[:200])
+        except Exception as e:
+            logger.error("Exception closing Trade #%s: %s", trade_id, e)
+        return False

@@ -61,13 +61,13 @@ def test_autotrader_toggle_and_killzone(mock_dependencies):
     trader.toggle(True)
     assert trader.enabled is True
 
-    # Asian Open: 01:30 UTC -> True
+    # Active Session: 01:30 UTC -> True
     dt_asia = datetime(2026, 8, 26, 1, 30, tzinfo=timezone.utc)
     assert trader.is_in_killzone(dt_asia) is True
 
-    # Mid Asian Lull: 04:00 UTC -> False
-    dt_lull = datetime(2026, 8, 26, 4, 0, tzinfo=timezone.utc)
-    assert trader.is_in_killzone(dt_lull) is False
+    # Market Closed / Off-hours: 23:00 UTC -> False
+    dt_closed = datetime(2026, 8, 26, 23, 0, tzinfo=timezone.utc)
+    assert trader.is_in_killzone(dt_closed) is False
 
 
 @pytest.mark.asyncio

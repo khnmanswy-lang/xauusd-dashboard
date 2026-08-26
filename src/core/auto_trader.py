@@ -49,14 +49,11 @@ class AutoTrader:
         self._lock = asyncio.Lock()
 
     def is_in_killzone(self, dt: datetime) -> bool:
-        """Check if current time is within high-probability institutional killzones."""
-        curr_min = dt.hour * 60 + dt.minute
-        for (sh, sm, eh, em) in ALLOWED_KILLZONES:
-            start_min = sh * 60 + sm
-            end_min = eh * 60 + em
-            if start_min <= curr_min <= end_min:
-                return True
-        return False
+        """
+        Check if current time is within active market trading session hours (00:00 - 22:00 UTC).
+        """
+        # Active gold trading hours across Asia, London, and NY sessions
+        return 0 <= dt.hour < 22
 
     def toggle(self, state: Optional[bool] = None) -> bool:
         """Toggle or set auto-trader active state."""
@@ -120,6 +117,7 @@ class AutoTrader:
                                 "profit_usd": round(entry_p - price, 2)
                             }
 
+                logger.info("[AutoTrader] Open position active on Trade #%s (%s units @ $%.2f). Skipping new entry.", trade_id, units, entry_p)
                 return {
                     "status": "POSITION_OPEN",
                     "trade_id": trade_id,
@@ -132,27 +130,30 @@ class AutoTrader:
             # ------------------------------------------------------------------
             # 2. STRATEGY CONSTRAINTS & FILTERS
             # ------------------------------------------------------------------
-            # A. Cooldown Check (1 Hour)
+            # A. Cooldown Check (15 Minutes after previous filled trade)
             if now_ts - self.last_trade_time < self.cooldown_seconds:
                 remaining_sec = int(self.cooldown_seconds - (now_ts - self.last_trade_time))
+                logger.info("[AutoTrader] In cooldown (%dm remaining). Standing by.", round(remaining_sec / 60))
                 return {
                     "status": "COOLDOWN",
                     "cooldown_remaining_min": round(remaining_sec / 60, 1),
                     "message": f"Cooldown active ({round(remaining_sec / 60, 1)}m remaining)"
                 }
 
-            # B. Killzone Check
+            # B. Session Hours Check
             if not self.is_in_killzone(now_dt):
+                logger.info("[AutoTrader] Market session closed (UTC hour: %d).", now_dt.hour)
                 return {
                     "status": "OUTSIDE_KILLZONE",
                     "current_utc": now_dt.strftime("%H:%M UTC"),
-                    "message": "Standing aside outside institutional killzone windows"
+                    "message": "Standing aside outside active market session hours"
                 }
 
             # C. ADR Exhaustion & News Check
             vol = frame.get("volatility", {})
             adr_used = vol.get("adr_used_pct", 50.0)
-            if adr_used > 75.0:
+            if adr_used > 80.0:
+                logger.info("[AutoTrader] ADR capacity exhausted (%.1f%% used).", adr_used)
                 return {
                     "status": "ADR_EXHAUSTED",
                     "adr_used_pct": adr_used,
@@ -161,6 +162,7 @@ class AutoTrader:
 
             news = frame.get("news", {})
             if news.get("guard_active", False):
+                logger.info("[AutoTrader] High impact news blackout guard active.")
                 return {
                     "status": "NEWS_BLACKOUT",
                     "message": "High-impact news blackout window active"
@@ -179,13 +181,23 @@ class AutoTrader:
             tp1_p = exec_plan.get("take_profit_1")
             tp2_p = exec_plan.get("take_profit_2")
 
-            # Execute only when plan is READY_TO_EXECUTE or high-confluence GRADE_A
-            if plan_status != "READY_TO_EXECUTE" and grade not in ["GRADE_A"]:
+            # Execute when:
+            # - Direction is BULLISH_LONG or BEARISH_SHORT
+            # - Setup is GRADE_A or GRADE_B
+            # - Plan is not rejected
+            is_executable = (
+                direction in ["BULLISH_LONG", "BEARISH_SHORT"] and
+                plan_status not in ["PLAN_REJECTED", "NO_SETUP"] and
+                grade in ["GRADE_A", "GRADE_B"]
+            )
+
+            if not is_executable:
+                logger.info("[AutoTrader] Standing by: Plan status is %s, grade is %s (%s)", plan_status, grade, analysis.get("handover_notes") or analysis.get("headline", ""))
                 return {
                     "status": "WAITING",
                     "plan_status": plan_status,
                     "setup_grade": grade,
-                    "message": analysis.get("handover_notes") or "Awaiting setup trigger condition"
+                    "message": analysis.get("handover_notes") or analysis.get("headline") or "Awaiting setup trigger condition"
                 }
 
             if not entry_p or not sl_p:
@@ -206,9 +218,9 @@ class AutoTrader:
                 current_price=price
             )
 
-            # OANDA XAU_USD units: 1.0 standard lot = 100 units (ounces)
-            # e.g. 0.15 lots = 15 units
-            calc_units = round(lot_res.calculated_lots * 100)
+            # OANDA XAU_USD units: 1 unit = 1 ounce. Standard lot (1.0) = 100 units.
+            # Clamp between 1 unit and 20 units (0.01 to 0.20 lots) for practice risk control
+            calc_units = max(1, min(20, round(lot_res.calculated_lots * 100)))
             if direction == "BEARISH_SHORT":
                 calc_units = -calc_units
 
