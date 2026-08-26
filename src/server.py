@@ -110,7 +110,7 @@ async def lifespan(app: FastAPI):
         try:
             await ai_analyzer.evaluate_market()
             trade_res = await auto_trader.evaluate_and_trade()
-            if trade_res.get("status") in ["EXECUTED", "TRAILING_UPDATED"]:
+            if trade_res.get("status") in ["EXECUTED", "TRAILING_UPDATED", "ADR_EXHAUSTED"]:
                 await manager.broadcast({
                     "type": "AUTO_TRADE_UPDATE",
                     "data": trade_res

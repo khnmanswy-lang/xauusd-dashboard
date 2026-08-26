@@ -138,6 +138,8 @@ document.addEventListener('DOMContentLoaded', () => {
             addAlert(`🚀 Auto-Executed: [${tData.direction}] ${tData.units} units @ $${tData.entry_price.toFixed(2)} | SL: $${tData.stop_loss.toFixed(2)}`, 'sweep');
           } else if (tData.status === 'TRAILING_UPDATED') {
             addAlert(`🛡️ Trailed SL to Break-Even: Trade #${tData.trade_id} (SL: $${tData.new_stop_loss.toFixed(2)}) | Profit: +$${tData.profit_usd.toFixed(2)}`, 'sweep');
+          } else if (tData.status === 'ADR_EXHAUSTED') {
+            addAlert(`⏳ AutoTrader Standing Aside: ADR Capacity at ${tData.adr_used_pct ? tData.adr_used_pct.toFixed(0) : '85'}%`, 'general');
           }
           return;
         }

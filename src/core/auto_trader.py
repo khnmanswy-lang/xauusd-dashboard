@@ -152,7 +152,7 @@ class AutoTrader:
             # C. ADR Exhaustion & News Check
             vol = frame.get("volatility", {})
             adr_used = vol.get("adr_used_pct", 50.0)
-            if adr_used > 80.0:
+            if adr_used > 95.0:
                 logger.info("[AutoTrader] ADR capacity exhausted (%.1f%% used).", adr_used)
                 return {
                     "status": "ADR_EXHAUSTED",
