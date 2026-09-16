@@ -188,3 +188,51 @@ def test_market_data_engine_state_includes_setup_scan():
     assert "suggested_sl" in scan
     assert "suggested_tp1" in scan
     assert "suggested_tp2" in scan
+
+
+def test_setup_scanner_sl_tp_strict_bounds_when_session_levels_inverted():
+    """Verify that even if session levels are inverted/anomalous, SL is never placed above entry for long or below for short."""
+    m5_df = generate_m5_test_data("bullish_choch")
+    # Anomalous: asia_low is set ABOVE entry price
+    levels_inverted_long = SessionLevels(asia_high=2945.0, asia_low=2940.0, recent_sweep="ASIA_LOW_SWEPT")
+    fvg = FairValueGap(type="BULLISH", top=2935.0, bottom=2931.0, timestamp=1740000300, mitigated=False)
+
+    res_long = scan_market_setup(
+        current_price=2933.0,
+        m5_df=m5_df,
+        levels=levels_inverted_long,
+        fvgs=[fvg],
+        m15_vwap=2930.0,
+        h1_ema200=2920.0,
+        adr_used_pct=45.0,
+        news_guard_active=False,
+        atr_m5=2.0
+    )
+    # Long invariants
+    assert res_long.suggested_sl < res_long.suggested_entry
+    assert res_long.suggested_tp1 > res_long.suggested_entry
+    assert res_long.suggested_tp2 > res_long.suggested_tp1
+    assert res_long.risk_reward_ratio > 0
+
+    # Anomalous: asia_high is set BELOW entry price
+    m5_df_bearish = generate_m5_test_data("bearish_choch")
+    levels_inverted_short = SessionLevels(asia_high=2930.0, asia_low=2910.0, recent_sweep="ASIA_HIGH_SWEPT")
+    fvg_bearish = FairValueGap(type="BEARISH", top=2942.0, bottom=2936.0, timestamp=1740000300, mitigated=False)
+
+    res_short = scan_market_setup(
+        current_price=2939.0,
+        m5_df=m5_df_bearish,
+        levels=levels_inverted_short,
+        fvgs=[fvg_bearish],
+        m15_vwap=2944.0,
+        h1_ema200=2955.0,
+        adr_used_pct=45.0,
+        news_guard_active=False,
+        atr_m5=2.0
+    )
+    # Short invariants
+    assert res_short.suggested_sl > res_short.suggested_entry
+    assert res_short.suggested_tp1 < res_short.suggested_entry
+    assert res_short.suggested_tp2 < res_short.suggested_tp1
+    assert res_short.risk_reward_ratio > 0
+

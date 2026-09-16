@@ -29,6 +29,26 @@ class FairValueGap:
 
 
 @dataclass
+class OrderBlock:
+    """Represents an Institutional Order Block (OB)."""
+    type: str  # 'BULLISH' or 'BEARISH'
+    top: float
+    bottom: float
+    timestamp: int
+    mitigated: bool = False
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "type": self.type,
+            "top": round(self.top, 2),
+            "bottom": round(self.bottom, 2),
+            "timestamp": self.timestamp,
+            "mitigated": self.mitigated
+        }
+
+
+
+@dataclass
 class SessionLevels:
     """Tracks session benchmarks and key liquidity reference levels."""
     active_session: str = "LONDON"
@@ -230,6 +250,117 @@ def detect_fair_value_gaps(m5_df: pd.DataFrame, max_gaps: int = 5) -> List[FairV
 
     # Return the most recent unmitigated or latest gaps
     return gaps[-max_gaps:] if gaps else []
+
+
+def detect_order_blocks(
+    candles_df: pd.DataFrame,
+    current_price: float,
+    lookback: int = 30,
+    max_blocks: int = 5
+) -> List[OrderBlock]:
+    """
+    Detect Institutional Order Blocks (OB).
+    - Bullish OB: Last down candle prior to an aggressive upward impulse / displacement.
+    - Bearish OB: Last up candle prior to an aggressive downward impulse / displacement.
+    """
+    if candles_df.empty or len(candles_df) < 5:
+        return []
+
+    df = candles_df.tail(lookback).reset_index(drop=True)
+    n = len(df)
+    blocks: List[OrderBlock] = []
+
+    for i in range(1, n - 2):
+        c_prev = df.iloc[i - 1]
+        c_curr = df.iloc[i]
+        c_next1 = df.iloc[i + 1]
+        c_next2 = df.iloc[i + 2]
+
+        body_curr = abs(c_curr['close'] - c_curr['open'])
+        impulse_up = (c_next1['close'] > c_curr['high']) and (c_next2['close'] > c_next1['close'])
+        impulse_down = (c_next1['close'] < c_curr['low']) and (c_next2['close'] < c_next1['close'])
+
+        # Bullish Order Block (bearish candle followed by strong bullish impulse)
+        if c_curr['close'] < c_curr['open'] and impulse_up:
+            ob_top = float(c_curr['high'])
+            ob_bottom = float(c_curr['low'])
+
+            # Check if mitigated by future price action
+            subsequent = df.iloc[i + 1:]
+            mitigated = bool((subsequent['low'] <= ob_bottom).any() or current_price < ob_bottom)
+
+            blocks.append(OrderBlock(
+                type="BULLISH",
+                top=ob_top,
+                bottom=ob_bottom,
+                timestamp=int(c_curr['timestamp']),
+                mitigated=mitigated
+            ))
+
+        # Bearish Order Block (bullish candle followed by strong bearish impulse)
+        elif c_curr['close'] > c_curr['open'] and impulse_down:
+            ob_top = float(c_curr['high'])
+            ob_bottom = float(c_curr['low'])
+
+            # Check if mitigated by future price action
+            subsequent = df.iloc[i + 1:]
+            mitigated = bool((subsequent['high'] >= ob_top).any() or current_price > ob_top)
+
+            blocks.append(OrderBlock(
+                type="BEARISH",
+                top=ob_top,
+                bottom=ob_bottom,
+                timestamp=int(c_curr['timestamp']),
+                mitigated=mitigated
+            ))
+
+    return blocks[-max_blocks:] if blocks else []
+
+
+def detect_break_of_structure(
+    candles_df: pd.DataFrame,
+    lookback: int = 20,
+    swing_window: int = 3
+) -> Optional[Dict[str, Any]]:
+    """
+    Detect Market Break of Structure (BOS) in the direction of the prevailing trend.
+    Returns dictionary with type ('BULLISH_BOS' / 'BEARISH_BOS'), level, and timestamp.
+    """
+    if candles_df.empty or len(candles_df) < lookback:
+        return None
+
+    df = candles_df.tail(lookback).reset_index(drop=True)
+    n = len(df)
+    if n < swing_window * 2 + 2:
+        return None
+
+    latest_close = float(df['close'].iloc[-1])
+    latest_ts = int(df['timestamp'].iloc[-1])
+
+    # Find highest swing high and lowest swing low before latest candle
+    prior_highs = df['high'].iloc[:-1]
+    prior_lows = df['low'].iloc[:-1]
+
+    swing_high = float(prior_highs.max())
+    swing_low = float(prior_lows.min())
+
+    if latest_close > swing_high:
+        return {
+            "type": "BULLISH_BOS",
+            "level": round(swing_high, 2),
+            "timestamp": latest_ts,
+            "interpretation": f"Bullish Break of Structure above ${swing_high:.2f}"
+        }
+    elif latest_close < swing_low:
+        return {
+            "type": "BEARISH_BOS",
+            "level": round(swing_low, 2),
+            "timestamp": latest_ts,
+            "interpretation": f"Bearish Break of Structure below ${swing_low:.2f}"
+        }
+
+    return None
+
 
 
 def calculate_confluence_matrix(

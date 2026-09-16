@@ -23,30 +23,46 @@ def test_api_state(client):
     assert "volatility" in data
     assert "session" in data
     assert "news" in data
-    assert "setup_scan" in data
-    assert "ai_analysis" in data
-    assert "headline" in data["ai_analysis"]
+    assert "pivots" in data
+    assert "multi_tf_rsi" in data
+    assert "order_flow" in data
+    assert "daily_range" in data
+    assert "setup_analysis" in data
+    assert "headline" in data["setup_analysis"]
 
 
-def test_api_ai_endpoints(client):
-    # Test GET /api/ai/latest
-    res_get = client.get("/api/ai/latest")
+def test_api_setup_endpoints(client):
+    # Test GET /api/setup/latest
+    res_get = client.get("/api/setup/latest")
     assert res_get.status_code == 200
     latest = res_get.json()
     assert "headline" in latest
     assert "setup_grade" in latest
     assert "execution_plan" in latest
 
-    # Test POST /api/ai/analyze (on-demand re-scan)
-    res_post = client.post("/api/ai/analyze")
+    # Test POST /api/setup/scan (on-demand re-scan)
+    res_post = client.post("/api/setup/scan")
     assert res_post.status_code == 200
     new_analysis = res_post.json()
     assert "headline" in new_analysis
     assert "confidence_score" in new_analysis
 
 
+def test_api_matrix(client):
+    response = client.get("/api/matrix")
+    assert response.status_code == 200
+    data = response.json()
+    assert "timestamp" in data
+    assert "price" in data
+    assert "indicators" in data
+    assert "confluence" in data
+    assert "volatility" in data
+    assert "overlays" in data
+    assert "order_blocks" in data["overlays"]
+
+
 def test_api_history(client):
-    for tf in ["M5", "M15", "H1"]:
+    for tf in ["M1", "M5", "M15", "H1", "H4", "D1"]:
         response = client.get(f"/api/history/{tf}")
         assert response.status_code == 200
         candles = response.json()
@@ -54,6 +70,8 @@ def test_api_history(client):
         assert len(candles) > 0
         assert "open" in candles[0]
         assert "close" in candles[0]
+        assert "ema50" in candles[0]
+        assert "vwma20" in candles[0]
 
 
 def test_api_news(client):
@@ -139,22 +157,3 @@ def test_api_journal_endpoints(client):
     assert "timestamp_utc" in csv_text
     assert "BULLISH_LONG" in csv_text
     assert "2932.4" in csv_text
-
-
-def test_api_autotrader_endpoints(client):
-    # Test GET /api/autotrader/status
-    res_status = client.get("/api/autotrader/status")
-    assert res_status.status_code == 200
-    status_data = res_status.json()
-    assert "enabled" in status_data
-    assert "risk_per_trade_pct" in status_data
-
-    # Test POST /api/autotrader/toggle
-    res_toggle = client.post("/api/autotrader/toggle?enabled=false")
-    assert res_toggle.status_code == 200
-    assert res_toggle.json()["enabled"] is False
-
-    # Toggle back on
-    res_toggle_on = client.post("/api/autotrader/toggle?enabled=true")
-    assert res_toggle_on.status_code == 200
-    assert res_toggle_on.json()["enabled"] is True

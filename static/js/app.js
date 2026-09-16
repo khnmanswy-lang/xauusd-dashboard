@@ -1,602 +1,264 @@
 /**
- * Main Application Client for XAUUSD Multi-Timeframe Dashboard.
- * Coordinates WebSocket streaming, reactive DOM updates, dynamic risk sizing,
- * and comprehensive Quantitative Indicator Interpretation Matrix.
+ * XAUUSD Institutional Multi-Timeframe Algorithmic Terminal (M1, M15, H1, H4).
+ * Pure JavaScript, 0 LLM dependencies, WebSocket live state synchronizer.
  */
 
 document.addEventListener('DOMContentLoaded', () => {
-  // 1. Initialize Clean Chart (Candles + EMA 50 + EMA 200)
-  const dashboardChart = new DashboardChart('chart-canvas');
+  // 1. Initialize 4-Timeframe Simultaneous Multi-Chart Grid (M1, M15, H1, H4)
+  const multiChartGrid = window.initDashboardCharts ? window.initDashboardCharts() : null;
 
-  // State caches
-  let latestState = null;
-  let lastPrice = null;
-  let m5SecondsRemaining = 300;
-  let newsSecondsRemaining = 0;
+  // DOM Elements - Top Macro Bar (6 Cells)
+  const elTopBid = document.getElementById('top-bid');
+  const elTopAsk = document.getElementById('top-ask');
+  const elTopSpread = document.getElementById('top-spread');
+  const elTopVol = document.getElementById('top-vol');
+  const elTopChg = document.getElementById('top-chg');
+
+  const elTopSessPrimary = document.getElementById('top-sess-primary');
+  const elTopSessSecondary = document.getElementById('top-sess-secondary');
+
+  const elTopAdrTotal = document.getElementById('top-adr-total');
+  const elTopAdrUsed = document.getElementById('top-adr-used');
+  const elTopAdrPct = document.getElementById('top-adr-pct');
+
+  const elTopDayHigh = document.getElementById('top-day-high');
+  const elTopDayLow = document.getElementById('top-day-low');
+
+  const elTopDxy = document.getElementById('top-dxy');
+  const elTopUs10y = document.getElementById('top-us10y');
+  const elTopNextEvent = document.getElementById('top-next-event');
+  const elTopNextTime = document.getElementById('top-next-time');
+
+  // DOM Elements - Chart Floating HUDs (Tailored per Timeframe Role)
+  const elPillM1Ema9 = document.getElementById('pill-m1-ema9');
+  const elPillM1Vwap = document.getElementById('pill-m1-vwap');
+  const elPillM1Of = document.getElementById('pill-m1-of');
+  const elPillM15Ema9 = document.getElementById('pill-m15-ema9');
+  const elPillM15Ema21 = document.getElementById('pill-m15-ema21');
+  const elPillM15Range = document.getElementById('pill-m15-range');
+  const elPillH1Ema50 = document.getElementById('pill-h1-ema50');
+  const elPillH1Ema200 = document.getElementById('pill-h1-ema200');
+  const elPillH1Pp = document.getElementById('pill-h1-pp');
+  const elPillH1Atr = document.getElementById('pill-h1-atr');
+  const elPillH4Ema50 = document.getElementById('pill-h4-ema50');
+  const elPillH4Ema200 = document.getElementById('pill-h4-ema200');
+  const elPillH4Sweep = document.getElementById('pill-h4-sweep');
+  const elPillH4Atr = document.getElementById('pill-h4-atr');
+
+  // DOM Elements - Right Sidebar (Multi-TF RSI, Pivots, Order Flow)
+  const elRsiM1Val = document.getElementById('rsi-m1-val');
+  const elRsiM1Tag = document.getElementById('rsi-m1-tag');
+  const elRsiM15Val = document.getElementById('rsi-m15-val');
+  const elRsiM15Tag = document.getElementById('rsi-m15-tag');
+  const elRsiH1Val = document.getElementById('rsi-h1-val');
+  const elRsiH1Tag = document.getElementById('rsi-h1-tag');
+  const elRsiH4Val = document.getElementById('rsi-h4-val');
+  const elRsiH4Tag = document.getElementById('rsi-h4-tag');
+
+  const elPivotPp = document.getElementById('pivot-pp');
+  const elPivotR1 = document.getElementById('pivot-r1');
+  const elPivotR2 = document.getElementById('pivot-r2');
+  const elPivotS1 = document.getElementById('pivot-s1');
+  const elPivotS2 = document.getElementById('pivot-s2');
+
+  const elOfBuyPct = document.getElementById('of-buy-pct');
+  const elWsIndicator = document.getElementById('ws-indicator');
+
   let ws = null;
   let reconnectTimer = null;
 
-  // DOM Elements - Header
-  const elTzLabel = document.getElementById('tz-label');
-  const elPrice = document.getElementById('xauusd-price');
-  const elSpread = document.getElementById('xauusd-spread');
-  const elDxyVal = document.getElementById('dxy-val');
-  const elDxyChg = document.getElementById('dxy-chg');
-  const elUs10yVal = document.getElementById('us10y-val');
-  const elUs10yChg = document.getElementById('us10y-chg');
-  const elSessionDot = document.getElementById('session-dot');
-  const elSessionLabel = document.getElementById('session-label');
-  const elKillzoneLabel = document.getElementById('killzone-label');
-  const elNewsChip = document.getElementById('news-chip');
-  const elNewsName = document.getElementById('news-name');
-  const elNewsTimer = document.getElementById('news-timer');
-  const elWsIndicator = document.getElementById('ws-indicator');
-
-  // Detect and display User Local Timezone
-  const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Local';
-  const tzOffsetMin = -new Date().getTimezoneOffset();
-  const tzOffsetHours = Math.floor(Math.abs(tzOffsetMin) / 60);
-  const tzOffsetMins = Math.abs(tzOffsetMin) % 60;
-  const tzSign = tzOffsetMin >= 0 ? '+' : '-';
-  const tzFormatted = `UTC${tzSign}${tzOffsetHours}${tzOffsetMins > 0 ? `:${tzOffsetMins}` : ''}`;
-  if (elTzLabel) {
-    elTzLabel.textContent = `${tzFormatted} (${userTimezone.split('/').pop()})`;
-    elTzLabel.title = `Detected Local Timezone: ${userTimezone} (${tzFormatted})`;
-  }
-
-  // DOM Elements - Left Column: Confluence & Interpretations Matrix
-  const elConfluenceBanner = document.getElementById('overall-confluence-banner');
-  const elH1Badge = document.getElementById('h1-badge');
-  const elM15Badge = document.getElementById('m15-badge');
-  const elM5Badge = document.getElementById('m5-badge');
-
-  // Matrix items
-  const elMatrixVwapVal = document.getElementById('matrix-vwap-val');
-  const elMatrixVwapBadge = document.getElementById('matrix-vwap-badge');
-  const elMatrixVwapInterp = document.getElementById('matrix-vwap-interp');
-
-  const elMatrixRsiVal = document.getElementById('matrix-rsi-val');
-  const elMatrixRsiBadge = document.getElementById('matrix-rsi-badge');
-  const elMatrixRsiInterp = document.getElementById('matrix-rsi-interp');
-
-  const elMatrixEmaBadge = document.getElementById('matrix-ema-badge');
-  const elMatrixEmaInterp = document.getElementById('matrix-ema-interp');
-
-  const elMatrixSweepBadge = document.getElementById('matrix-sweep-badge');
-  const elMatrixSweepInterp = document.getElementById('matrix-sweep-interp');
-  const elAsiaHigh = document.getElementById('level-asia-high');
-  const elAsiaLow = document.getElementById('level-asia-low');
-
-  const elAdrPctTag = document.getElementById('adr-pct-tag');
-  const elAdrBarFill = document.getElementById('adr-bar-fill');
-  const elAdrUsed = document.getElementById('adr-used');
-  const elAdrTotal = document.getElementById('adr-total');
-  const elMatrixAdrInterp = document.getElementById('matrix-adr-interp');
-
-  // DOM Elements - Right Column: AI Setup Scanner & Alert Feed
-  const elBtnRescanAi = document.getElementById('btn-rescan-ai');
-  const elAiGradeBadge = document.getElementById('ai-grade-badge');
-  const elAiConfidenceBadge = document.getElementById('ai-confidence-badge');
-  const elAiHeadline = document.getElementById('ai-headline');
-  const elAiThesis = document.getElementById('ai-thesis');
-  const elAiBreakdownList = document.getElementById('ai-breakdown-list');
-  const elAiEntryPrice = document.getElementById('ai-entry-price');
-  const elAiSlPrice = document.getElementById('ai-sl-price');
-  const elAiTp1Price = document.getElementById('ai-tp1-price');
-  const elAiTp2Price = document.getElementById('ai-tp2-price');
-  const elAiInvalidationText = document.getElementById('ai-invalidation-text');
-  const elAiPsychologyText = document.getElementById('ai-psychology-text');
-
-  const elM5TimerDisplay = document.getElementById('m5-timer-display');
-  const elAlertFeedList = document.getElementById('alert-feed-list');
-
-  let latestAiAnalysis = null;
-  let latestActiveTrade = null;
-
   // ==========================================================================
-  // WebSocket Client
+  // Real-Time WebSocket Connector
   // ==========================================================================
   function connectWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws/stream`;
 
+    if (ws) {
+      try { ws.close(); } catch (e) {}
+    }
+
     ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
-      console.log("Connected to XAUUSD WebSocket stream.");
-      elWsIndicator.classList.remove('ws-offline');
-      elWsIndicator.title = "WebSocket Connected";
-      addAlert("Live market feed connected.", "system");
-      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (elWsIndicator) {
+        elWsIndicator.className = 'ws-status';
+        elWsIndicator.title = "Live Market Stream Connected";
+      }
     };
 
     ws.onmessage = (event) => {
       try {
-        const message = JSON.parse(event.data);
-        if (message.type === 'pong') return;
-
-        if (message.type === 'AI_ANALYSIS_UPDATE') {
-          renderAiAnalysis(message.data);
-          addAlert(`AI Setup Updated: [${message.data.setup_grade}] ${message.data.headline}`, 'sweep');
-          return;
-        }
-
-        if (message.type === 'AUTO_TRADE_UPDATE') {
-          const tData = message.data;
-          if (tData.status === 'EXECUTED') {
-            addAlert(`🚀 Auto-Executed: [${tData.direction}] ${tData.units} units @ $${tData.entry_price.toFixed(2)} | SL: $${tData.stop_loss.toFixed(2)}`, 'sweep');
-          } else if (tData.status === 'TRAILING_UPDATED') {
-            addAlert(`🛡️ Trailed SL to Break-Even: Trade #${tData.trade_id} (SL: $${tData.new_stop_loss.toFixed(2)}) | Profit: +$${tData.profit_usd.toFixed(2)}`, 'sweep');
-          } else if (tData.status === 'ADR_EXHAUSTED') {
-            addAlert(`⏳ AutoTrader Standing Aside: ADR Capacity at ${tData.adr_used_pct ? tData.adr_used_pct.toFixed(0) : '85'}%`, 'general');
-          }
-          return;
-        }
-
-        latestState = message;
-        renderState(message);
+        const state = JSON.parse(event.data);
+        renderState(state);
       } catch (e) {
         console.error("Error parsing WS state:", e);
       }
     };
 
     ws.onclose = () => {
-      elWsIndicator.classList.add('ws-offline');
-      elWsIndicator.title = "WebSocket Disconnected - Reconnecting...";
-      reconnectTimer = setTimeout(connectWebSocket, 3000);
+      if (elWsIndicator) {
+        elWsIndicator.className = 'ws-status offline';
+        elWsIndicator.title = "WebSocket Disconnected - Reconnecting...";
+      }
+      clearTimeout(reconnectTimer);
+      reconnectTimer = setTimeout(connectWebSocket, 2000);
     };
 
     ws.onerror = (err) => {
-      console.warn("WebSocket error:", err);
+      console.debug("WebSocket error:", err);
       ws.close();
     };
   }
 
   // ==========================================================================
-  // State Rendering
+  // State Rendering Loop
   // ==========================================================================
   function renderState(state) {
     if (!state || !state.xauusd) return;
 
     const gold = state.xauusd;
-    const currentPrice = gold.price;
+    const price = gold.price;
+    const bid = gold.bid || (price - 0.10);
+    const ask = gold.ask || (price + 0.10);
+    const spread = gold.spread || (ask - bid);
 
-    // 1. Render Price with Tick Color Flash
-    elPrice.textContent = `$${currentPrice.toFixed(2)}`;
-    elSpread.textContent = gold.spread.toFixed(2);
-
-    if (lastPrice !== null && lastPrice !== currentPrice) {
-      if (currentPrice > lastPrice) {
-        elPrice.classList.remove('price-flash-down');
-        elPrice.classList.add('price-flash-up');
-      } else {
-        elPrice.classList.remove('price-flash-up');
-        elPrice.classList.add('price-flash-down');
-      }
-      setTimeout(() => {
-        elPrice.classList.remove('price-flash-up', 'price-flash-down');
-      }, 300);
-    }
-    lastPrice = currentPrice;
-
-    // 2. Macro Tickers
-    if (state.macro) {
-      if (state.macro.dxy) {
-        elDxyVal.textContent = state.macro.dxy.price.toFixed(2);
-        const chg = state.macro.dxy.change_pct;
-        elDxyChg.textContent = `${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%`;
-        elDxyChg.className = `num ${chg >= 0 ? 'chip-up' : 'chip-down'}`;
-      }
-      if (state.macro.us10y) {
-        elUs10yVal.textContent = `${state.macro.us10y.price.toFixed(2)}%`;
-        const chg = state.macro.us10y.change_pct;
-        elUs10yChg.textContent = `${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%`;
-        elUs10yChg.className = `num ${chg >= 0 ? 'chip-up' : 'chip-down'}`;
-      }
+    // 1. Update 4-Timeframe Candlestick Charts
+    if (multiChartGrid) {
+      multiChartGrid.updateCandle(price, gold.volume || 1.0, state.timestamp || Math.floor(Date.now() / 1000));
     }
 
-    // 3. Active Session & Killzone
+    // 2. Top Macro Bar - Cell 1 (Symbol & Bid/Ask)
+    if (elTopBid) elTopBid.textContent = bid.toFixed(2);
+    if (elTopAsk) elTopAsk.textContent = ask.toFixed(2);
+
+    // Cell 2 (Spread, Vol, Change)
+    if (elTopSpread) {
+      elTopSpread.textContent = gold.spread_formatted || `$${spread.toFixed(2)} (${(spread / 0.1).toFixed(1)} pips)`;
+    }
+    if (elTopVol) {
+      const volStatus = gold.volume_status || "NORMAL";
+      elTopVol.textContent = volStatus === "VOLUME_CLIMAX" ? "Climax" : (volStatus === "HIGH" ? "High" : "Normal");
+      elTopVol.style.color = volStatus === "VOLUME_CLIMAX" ? "var(--bear-red)" : "var(--gold-accent)";
+    }
+    if (elTopChg) {
+      const chg = gold.change_pct || 0.0;
+      elTopChg.textContent = `${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%`;
+      elTopChg.className = `num ${chg >= 0 ? 'chip-up' : 'chip-down'}`;
+    }
+
+    // Cell 3 (Session Status)
     if (state.session) {
-      const sess = state.session.active_session;
-      elSessionLabel.textContent = sess;
-      elKillzoneLabel.textContent = `[${state.session.killzone || 'NONE'}]`;
-
-      elSessionDot.className = 'session-dot';
-      if (sess === 'ASIA') elSessionDot.classList.add('dot-asia');
-      else if (sess === 'LONDON') elSessionDot.classList.add('dot-london');
-      else if (sess === 'NEW_YORK') elSessionDot.classList.add('dot-ny');
-      else elSessionDot.classList.add('dot-closed');
-
-      if (elAsiaHigh) elAsiaHigh.textContent = state.session.asia_high ? `$${state.session.asia_high.toFixed(2)}` : '--';
-      if (elAsiaLow) elAsiaLow.textContent = state.session.asia_low ? `$${state.session.asia_low.toFixed(2)}` : '--';
-
-      if (state.session.recent_sweep) {
-        addAlert(`Liquidity Sweep: ${state.session.recent_sweep} at $${currentPrice.toFixed(2)}`, 'sweep');
+      const activeSess = state.session.active_session || "LONDON";
+      const killzone = state.session.killzone;
+      if (elTopSessPrimary) elTopSessPrimary.textContent = `● ${activeSess} (${killzone ? 'Open' : 'Active'})`;
+      if (elTopSessSecondary) {
+        if (activeSess === "LONDON") elTopSessSecondary.textContent = "○ NY (Pre)";
+        else if (activeSess === "NEW_YORK") elTopSessSecondary.textContent = "○ ASIA (Closed)";
+        else elTopSessSecondary.textContent = "○ LONDON (Pre)";
       }
     }
 
-    // 4. News Countdown
-    if (state.news) {
-      elNewsName.textContent = state.news.next_event;
-      newsSecondsRemaining = state.news.countdown_seconds;
-      if (state.news.guard_active) {
-        elNewsChip.classList.add('news-alert-active');
-      } else {
-        elNewsChip.classList.remove('news-alert-active');
-      }
-    }
-
-    // 5. MTF Confluence Bias
-    if (state.confluence_matrix) {
-      const conf = state.confluence_matrix;
-      elConfluenceBanner.textContent = conf.overall_score || '0 NEUTRAL';
-      elConfluenceBanner.className = 'confluence-banner';
-      if (conf.score_value > 0) elConfluenceBanner.classList.add('banner-bullish');
-      else if (conf.score_value < 0) elConfluenceBanner.classList.add('banner-bearish');
-      else elConfluenceBanner.classList.add('banner-neutral');
-
-      if (conf.h1) {
-        elH1Badge.textContent = `${conf.h1.bias} (> 200 EMA)`;
-        elH1Badge.className = `tf-badge ${conf.h1.bias === 'BULLISH' ? 'badge-bull' : 'badge-bear'}`;
-      }
-      if (conf.m15) {
-        elM15Badge.textContent = conf.m15.structure;
-        elM15Badge.className = `tf-badge ${conf.m15.structure.includes('BULLISH') ? 'badge-bull' : 'badge-bear'}`;
-      }
-      if (conf.m5) {
-        elM5Badge.textContent = conf.m5.signal;
-        elM5Badge.className = `tf-badge ${conf.m5.signal.includes('BUY') ? 'badge-bull' : (conf.m5.signal.includes('SELL') ? 'badge-bear' : 'badge-neut')}`;
-      }
-    }
-
-    // 6. Quantitative Indicator Matrix with Interpretations
-    if (state.indicators_matrix) {
-      const mat = state.indicators_matrix;
-
-      // VWAP Interpretation
-      if (mat.vwap) {
-        elMatrixVwapVal.textContent = mat.vwap.value ? `$${mat.vwap.value.toFixed(2)}` : '--';
-        elMatrixVwapBadge.textContent = mat.vwap.status;
-        elMatrixVwapBadge.className = `tf-badge ${mat.vwap.status.includes('BULLISH') ? 'badge-bull' : (mat.vwap.status.includes('BEARISH') ? 'badge-bear' : 'badge-neut')}`;
-        elMatrixVwapInterp.textContent = mat.vwap.interpretation;
-      }
-
-      // RSI Interpretation
-      if (mat.rsi) {
-        elMatrixRsiVal.textContent = mat.rsi.value ? mat.rsi.value.toFixed(1) : '--';
-        elMatrixRsiBadge.textContent = mat.rsi.status;
-        elMatrixRsiBadge.className = `tf-badge ${mat.rsi.status.includes('BULLISH') ? 'badge-bull' : (mat.rsi.status.includes('BEARISH') ? 'badge-bear' : 'badge-neut')}`;
-        elMatrixRsiInterp.textContent = mat.rsi.interpretation;
-      }
-
-      // EMA Interpretation
-      if (mat.ema) {
-        elMatrixEmaBadge.textContent = mat.ema.status;
-        elMatrixEmaBadge.className = `tf-badge ${mat.ema.status.includes('BULLISH') ? 'badge-bull' : (mat.ema.status.includes('BEARISH') ? 'badge-bear' : 'badge-neut')}`;
-        elMatrixEmaInterp.textContent = mat.ema.interpretation;
-      }
-
-      // Structure / Liquidity Interpretation
-      if (mat.structure) {
-        elMatrixSweepBadge.textContent = mat.structure.status;
-        elMatrixSweepBadge.className = `tf-badge ${mat.structure.status.includes('BULLISH') ? 'badge-bull' : (mat.structure.status.includes('BEARISH') ? 'badge-bear' : 'badge-neut')}`;
-        elMatrixSweepInterp.textContent = mat.structure.interpretation;
-      }
-
-      // ADR Interpretation
-      if (mat.adr) {
-        elMatrixAdrInterp.textContent = mat.adr.interpretation;
-      }
-
-      // FVG Interpretation
-      if (mat.fvg && elMatrixFvgInterp) {
-        elMatrixFvgInterp.textContent = mat.fvg.interpretation;
-      }
-    }
-
-    // 7. Volatility & ADR meter
+    // Cell 4 (ADR 20D Capacity)
     if (state.volatility) {
-      const vol = state.volatility;
-      elAdrPctTag.textContent = `${vol.adr_used_pct}%`;
-      elAdrBarFill.style.width = `${Math.min(vol.adr_used_pct, 100)}%`;
-      elAdrUsed.textContent = vol.adr_used ? vol.adr_used.toFixed(2) : '--';
-      elAdrTotal.textContent = vol.adr_total ? vol.adr_total.toFixed(2) : '--';
+      const adr = state.volatility;
+      if (elTopAdrTotal) elTopAdrTotal.textContent = (adr.adr_total || 34.20).toFixed(2);
+      if (elTopAdrUsed) elTopAdrUsed.textContent = (adr.adr_used || 21.80).toFixed(2);
+      if (elTopAdrPct) elTopAdrPct.textContent = `${(adr.adr_used_pct || 63.7).toFixed(1)}%`;
     }
 
-    // 8. Update Chart (Live Candle & Active Position / Planned Overlay)
-    dashboardChart.updateCandle(gold);
-    latestActiveTrade = state.active_trade || null;
-    if (dashboardChart && typeof dashboardChart.renderActivePositionOverlay === 'function') {
-      dashboardChart.renderActivePositionOverlay(latestActiveTrade, latestAiAnalysis, gold.price);
+    // Cell 5 (Daily Range H-L)
+    if (state.daily_range) {
+      if (elTopDayHigh) elTopDayHigh.textContent = state.daily_range.high.toFixed(2);
+      if (elTopDayLow) elTopDayLow.textContent = state.daily_range.low.toFixed(2);
     }
 
-    // 9. Update M5 Timer
-    m5SecondsRemaining = gold.candle_timer_m5 || 300;
-
-    // 10. Update AI Analysis Card if present
-    if (state.ai_analysis) {
-      renderAiAnalysis(state.ai_analysis);
+    // Cell 6 (Macro DXY, US10Y & News)
+    if (state.macro) {
+      if (state.macro.dxy && elTopDxy) elTopDxy.textContent = state.macro.dxy.price.toFixed(2);
+      if (state.macro.us10y && elTopUs10y) elTopUs10y.textContent = `${state.macro.us10y.price.toFixed(2)}%`;
     }
-  }
-
-  // ==========================================================================
-  // AI Setup Analysis Renderer
-  // ==========================================================================
-  function renderAiAnalysis(aiData) {
-    if (!aiData) return;
-    latestAiAnalysis = aiData;
-
-    // 1. Grade Badge & Plan Status
-    const grade = aiData.setup_grade || 'NO_SETUP';
-    const dir = aiData.direction || 'NEUTRAL';
-    const status = aiData.plan_status || 'NO_SETUP';
-
-    if (elAiGradeBadge) {
-      let statusText = `${grade.replace('_', ' ')} ${dir === 'BULLISH_LONG' ? 'LONG' : (dir === 'BEARISH_SHORT' ? 'SHORT' : '')}`.trim();
-      if (status === 'WAITING_FOR_TRIGGER') {
-        statusText = `⏳ PENDING TRIGGER (${dir.replace('_', ' ')})`;
-      } else if (status === 'PLAN_REJECTED') {
-        statusText = `❌ PLAN CANCELLED`;
-      } else if (status === 'ACTIVE_MANAGEMENT') {
-        statusText = `🛡️ ACTIVE (TRAILING)`;
-      }
-
-      elAiGradeBadge.textContent = statusText;
-      elAiGradeBadge.className = `tf-badge ${
-        status === 'READY_TO_EXECUTE' ? (dir === 'BULLISH_LONG' ? 'badge-bull' : 'badge-bear') :
-        (status === 'WAITING_FOR_TRIGGER' ? 'badge-neut' :
-        (status === 'PLAN_REJECTED' ? 'badge-bear' : 'badge-neut'))
-      }`;
-    }
-
-    // 2. Confidence Tag
-    if (elAiConfidenceBadge) {
-      const conf = Math.round((aiData.confidence_score || 0.0) * 100);
-      elAiConfidenceBadge.textContent = `${conf}%`;
-    }
-
-    // 3. Headline & Thesis
-    if (elAiHeadline) elAiHeadline.textContent = aiData.headline || 'Analyzing market structure...';
-    if (elAiThesis) elAiThesis.textContent = aiData.thesis || '';
-
-    // 4. Breakdown Bullets (including handover notes or rejection reason)
-    if (elAiBreakdownList && Array.isArray(aiData.order_flow_breakdown)) {
-      elAiBreakdownList.innerHTML = '';
-      
-      if (aiData.handover_notes) {
-        const liHandover = document.createElement('li');
-        liHandover.style.color = 'var(--gold-accent)';
-        liHandover.style.fontWeight = '600';
-        liHandover.textContent = `📋 Handover: ${aiData.handover_notes}`;
-        elAiBreakdownList.appendChild(liHandover);
-      }
-      
-      if (aiData.rejection_reason) {
-        const liRejection = document.createElement('li');
-        liRejection.style.color = '#fb7185';
-        liRejection.style.fontWeight = '600';
-        liRejection.textContent = `🚫 Rejection: ${aiData.rejection_reason}`;
-        elAiBreakdownList.appendChild(liRejection);
-      }
-
-      aiData.order_flow_breakdown.forEach(item => {
-        const li = document.createElement('li');
-        li.textContent = item;
-        elAiBreakdownList.appendChild(li);
-      });
-    }
-
-    // 5. Actionable Execution Levels
-    const exec = aiData.execution_plan || {};
-    if (elAiEntryPrice) elAiEntryPrice.textContent = exec.entry ? `$${exec.entry.toFixed(2)}` : '--';
-    if (elAiSlPrice) elAiSlPrice.textContent = exec.stop_loss ? `$${exec.stop_loss.toFixed(2)}` : '--';
-    if (elAiTp1Price) elAiTp1Price.textContent = exec.take_profit_1 ? `$${exec.take_profit_1.toFixed(2)}` : '--';
-    if (elAiTp2Price) elAiTp2Price.textContent = exec.take_profit_2 ? `$${exec.take_profit_2.toFixed(2)}` : '--';
-
-    // 6. Invalidation & Psychology Callouts
-    if (elAiInvalidationText) {
-      if (aiData.rejection_reason) {
-        elAiInvalidationText.textContent = `INVALIDATED: ${aiData.rejection_reason}`;
-      } else if (aiData.trigger_condition && aiData.trigger_condition.description) {
-        elAiInvalidationText.textContent = `CRON CONDITION: ${aiData.trigger_condition.description}`;
-      } else {
-        elAiInvalidationText.textContent = exec.invalidation || 'Awaiting setup confirmation.';
+    if (state.news) {
+      if (elTopNextEvent) elTopNextEvent.textContent = state.news.next_event || "CPI";
+      if (elTopNextTime) {
+        elTopNextTime.textContent = state.news.scheduled_time_str || "13:30 GMT";
       }
     }
-    if (elAiPsychologyText) elAiPsychologyText.textContent = aiData.psychology_warning || 'Maintain strict 1% risk discipline.';
 
-    // 7. Render Visual Active Position / Trade Setup Lines on Chart
-    const curP = (latestState && latestState.xauusd) ? latestState.xauusd.price : null;
-    if (dashboardChart && typeof dashboardChart.renderActivePositionOverlay === 'function') {
-      dashboardChart.renderActivePositionOverlay(latestActiveTrade, latestAiAnalysis, curP);
+    // 3. Floating Chart HUDs (Role-Tailored)
+    if (state.chart_pills) {
+      const cp = state.chart_pills;
+      if (cp.m1) {
+        if (elPillM1Ema9) elPillM1Ema9.textContent = (cp.m1.ema9 || price).toFixed(2);
+        if (elPillM1Vwap) elPillM1Vwap.textContent = cp.m1.vwap.toFixed(2);
+        if (elPillM1Of) elPillM1Of.textContent = cp.m1.order_flow;
+      }
+      if (cp.m15) {
+        if (elPillM15Ema9) elPillM15Ema9.textContent = cp.m15.ema9.toFixed(2);
+        if (elPillM15Ema21) elPillM15Ema21.textContent = cp.m15.ema21.toFixed(2);
+        if (elPillM15Range) elPillM15Range.textContent = (cp.m15.range || 0.0).toFixed(2);
+      }
+      if (cp.h1) {
+        if (elPillH1Ema50) elPillH1Ema50.textContent = cp.h1.ema50.toFixed(2);
+        if (elPillH1Ema200) elPillH1Ema200.textContent = cp.h1.ema200.toFixed(2);
+        if (elPillH1Pp) elPillH1Pp.textContent = (cp.h1.pp || 0.0).toFixed(2);
+        if (elPillH1Atr) elPillH1Atr.textContent = cp.h1.atr14.toFixed(2);
+      }
+      if (cp.h4) {
+        if (elPillH4Ema50) elPillH4Ema50.textContent = (cp.h4.ema50 || cp.h1.ema50 || price).toFixed(2);
+        if (elPillH4Ema200) elPillH4Ema200.textContent = (cp.h4.ema200 || cp.h1.ema200 || price).toFixed(2);
+        if (elPillH4Sweep) elPillH4Sweep.textContent = cp.h4.sweep;
+        if (elPillH4Atr) elPillH4Atr.textContent = cp.h4.atr14.toFixed(2);
+      }
     }
-  }
 
-  // ==========================================================================
-  // On-Demand AI Market Re-Evaluation
-  // ==========================================================================
-  async function triggerAiRescan() {
-    if (!elBtnRescanAi) return;
-    elBtnRescanAi.classList.add('scanning');
-    elBtnRescanAi.disabled = true;
-    elBtnRescanAi.innerHTML = `<span class="btn-icon">⏳</span><span>Scanning...</span>`;
-
-    try {
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send('request_ai_analysis');
-      } else {
-        const res = await fetch('/api/ai/analyze', { method: 'POST' });
-        if (res.ok) {
-          const data = await res.json();
-          renderAiAnalysis(data);
-          addAlert(`AI Setup Re-Scanned: [${data.setup_grade}] ${data.headline}`, 'sweep');
+    // 4. Right Sidebar - Multi-TF RSI
+    if (state.multi_tf_rsi) {
+      const rsi = state.multi_tf_rsi;
+      const setRsi = (vEl, tEl, data) => {
+        if (!vEl || !data) return;
+        vEl.textContent = data.val.toFixed(1);
+        if (tEl) {
+          tEl.textContent = `[${data.tag}]`;
+          tEl.className = data.tag === '▲' ? 'tag-bull' : (data.tag === '▼' ? 'tag-bear' : 'tag-neut');
         }
-      }
-    } catch (e) {
-      console.error("Error triggering AI re-scan:", e);
-    } finally {
-      setTimeout(() => {
-        elBtnRescanAi.classList.remove('scanning');
-        elBtnRescanAi.disabled = false;
-        elBtnRescanAi.innerHTML = `<span class="btn-icon">⚡</span><span>Re-Scan AI</span>`;
-      }, 600);
+      };
+      setRsi(elRsiM1Val, elRsiM1Tag, rsi.M1);
+      setRsi(elRsiM15Val, elRsiM15Tag, rsi.M15);
+      setRsi(elRsiH1Val, elRsiH1Tag, rsi.H1);
+      setRsi(elRsiH4Val, elRsiH4Tag, rsi.H4);
+    }
+
+    // Right Sidebar - Pivot Points
+    if (state.pivots) {
+      const p = state.pivots;
+      if (elPivotPp) elPivotPp.textContent = p.pp.toFixed(2);
+      if (elPivotR1) elPivotR1.textContent = p.r1.toFixed(2);
+      if (elPivotR2) elPivotR2.textContent = p.r2.toFixed(2);
+      if (elPivotS1) elPivotS1.textContent = p.s1.toFixed(2);
+      if (elPivotS2) elPivotS2.textContent = p.s2.toFixed(2);
+    }
+
+    // Right Sidebar - Order Flow Pressure
+    if (state.order_flow) {
+      const of = state.order_flow;
+      const elOfBuy = document.getElementById('of-buy-pct');
+      const elOfSell = document.getElementById('of-sell-pct');
+      const elOfBar = document.getElementById('of-bar-buy');
+      if (elOfBuy) elOfBuy.textContent = `${of.buy_pct}%`;
+      if (elOfSell) elOfSell.textContent = `${of.sell_pct}%`;
+      if (elOfBar) elOfBar.style.width = `${of.buy_pct}%`;
     }
   }
 
-  if (elBtnRescanAi) {
-    elBtnRescanAi.addEventListener('click', triggerAiRescan);
-  }
-
-  // ==========================================================================
-  // Clocks & Timers Loop (1 Second Interval)
-  // ==========================================================================
-  setInterval(() => {
-    // M5 Countdown
-    if (m5SecondsRemaining > 0) m5SecondsRemaining--;
-    const m5Mins = Math.floor(m5SecondsRemaining / 60);
-    const m5Secs = m5SecondsRemaining % 60;
-    elM5TimerDisplay.textContent = `${String(m5Mins).padStart(2, '0')}:${String(m5Secs).padStart(2, '0')}`;
-
-    // News Countdown
-    if (newsSecondsRemaining > 0) newsSecondsRemaining--;
-    const nHours = Math.floor(newsSecondsRemaining / 3600);
-    const nMins = Math.floor((newsSecondsRemaining % 3600) / 60);
-    const nSecs = newsSecondsRemaining % 60;
-    elNewsTimer.textContent = `${String(nHours).padStart(2, '0')}:${String(nMins).padStart(2, '0')}:${String(nSecs).padStart(2, '0')}`;
-  }, 1000);
-
-  // ==========================================================================
-  // Alerts Feed Helper
-  // ==========================================================================
-  const alertCache = new Set();
-  function addAlert(message, type = 'general') {
-    const timeStr = new Date().toLocaleTimeString([], {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false
-    });
-    const key = `${timeStr}-${message}`;
-    if (alertCache.has(key)) return;
-    alertCache.add(key);
-
-    const item = document.createElement('div');
-    item.className = `alert-item ${type === 'sweep' ? 'alert-item-sweep' : (type === 'news' ? 'alert-item-news' : '')}`;
-    item.innerHTML = `
-      <div class="alert-time num">${timeStr} Local</div>
-      <div class="alert-msg">${message}</div>
-    `;
-
-    elAlertFeedList.prepend(item);
-    if (elAlertFeedList.children.length > 25) {
-      elAlertFeedList.removeChild(elAlertFeedList.lastChild);
-    }
-  }
-
-  // ==========================================================================
-  // Toolbar Buttons: Timeframe & EMA Toggles
-  // ==========================================================================
-  document.querySelectorAll('.tf-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      const tf = btn.dataset.tf;
-      dashboardChart.loadHistory(tf);
-      addAlert(`Timeframe switched to ${tf}`, 'general');
-    });
-  });
-
-  const btnEma50 = document.getElementById('toggle-ema50');
-  if (btnEma50) {
-    btnEma50.addEventListener('click', () => {
-      btnEma50.classList.toggle('active');
-      dashboardChart.toggleEma50(btnEma50.classList.contains('active'));
+  // CSV Journal Export
+  const btnExport = document.getElementById('btn-export-journal');
+  if (btnExport) {
+    btnExport.addEventListener('click', () => {
+      window.location.href = '/api/journal/export';
     });
   }
 
-  const btnEma200 = document.getElementById('toggle-ema200');
-  if (btnEma200) {
-    btnEma200.addEventListener('click', () => {
-      btnEma200.classList.toggle('active');
-      dashboardChart.toggleEma200(btnEma200.classList.contains('active'));
-    });
-  }
-
-  // ==========================================================================
-  // CSV Trade Journal Export Handlers
-  // ==========================================================================
-  function exportTradeJournal() {
-    addAlert("Exporting XAUUSD Trade Journal (CSV)...", "general");
-    const downloadUrl = "/api/journal/export";
-    const a = document.createElement("a");
-    a.href = downloadUrl;
-    a.download = `xauusd_trade_journal_${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  }
-
-  const btnExportTop = document.getElementById("btn-export-journal-top");
-  if (btnExportTop) {
-    btnExportTop.addEventListener("click", exportTradeJournal);
-  }
-
-  const btnExportCard = document.getElementById("btn-export-journal");
-  if (btnExportCard) {
-    btnExportCard.addEventListener("click", exportTradeJournal);
-  }
-
-  // ==========================================================================
-  // AutoTrader Status & Toggle Controller
-  // ==========================================================================
-  const elAutoTraderChip = document.getElementById('autotrader-chip');
-  const elAutoTraderLabel = document.getElementById('autotrader-label');
-
-  async function initAutoTrader() {
-    try {
-      const res = await fetch('/api/autotrader/status');
-      if (res.ok) {
-        const data = await res.json();
-        updateAutoTraderUI(data.enabled);
-      }
-    } catch (e) {
-      console.debug("Could not fetch autotrader status:", e);
-    }
-  }
-
-  function updateAutoTraderUI(enabled) {
-    if (!elAutoTraderChip) return;
-    if (enabled) {
-      elAutoTraderChip.className = 'autotrader-chip active';
-      if (elAutoTraderLabel) elAutoTraderLabel.textContent = 'AUTO-TRADER: ON';
-    } else {
-      elAutoTraderChip.className = 'autotrader-chip paused';
-      if (elAutoTraderLabel) elAutoTraderLabel.textContent = 'AUTO-TRADER: OFF';
-    }
-  }
-
-  if (elAutoTraderChip) {
-    elAutoTraderChip.addEventListener('click', async () => {
-      try {
-        const res = await fetch('/api/autotrader/toggle', { method: 'POST' });
-        if (res.ok) {
-          const data = await res.json();
-          updateAutoTraderUI(data.enabled);
-          addAlert(`Auto-Trader ${data.enabled ? 'ENABLED' : 'PAUSED'} on OANDA Practice Account.`, 'general');
-        }
-      } catch (e) {
-        console.error("Error toggling autotrader:", e);
-      }
-    });
-  }
-
-  // Initialize
-  initAutoTrader();
-
-  // Start WebSocket
+  // Connect WebSocket
   connectWebSocket();
 });
-
-function roundNum(val, dec = 2) {
-  return parseFloat(Number(val).toFixed(dec));
-}

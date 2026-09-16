@@ -3,307 +3,216 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>XAUUSD Multi-Timeframe Terminal</title>
-  <link rel="stylesheet" href="/static/css/dashboard.css?v=20260826_v4">
-  <!-- TradingView Lightweight Charts v4 -->
-  <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+  <title>XAUUSD Multi-Timeframe Algorithmic Terminal (M1, M15, H1, H4)</title>
+  
+  <!-- TradingView Lightweight Charts (Zero-dependency standalone bundle) -->
+  <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+  
+  <!-- GitHub Primer Dark Theme Stylesheet -->
+  <link rel="stylesheet" href="/static/css/dashboard.css?v=2.0.0">
 </head>
-<body>
+<body class="theme-primer-dark">
 
-  <!-- TOP HEADER BAR -->
-  <header class="header-bar">
-    <div class="header-left">
-      <div class="brand-badge">
-        <span class="brand-icon">⚡</span>
-        <span class="brand-title">XAUUSD TERMINAL</span>
-      </div>
-
-      <div class="price-display">
-        <span id="xauusd-price" class="main-price num">--.--</span>
-        <span class="spread-tag">Spread: <span id="xauusd-spread" class="num">0.20</span></span>
-      </div>
+  <!-- TOP BAR: KEY MACRO METRICS & SESSIONS (6-Cell Institutional Bar) -->
+  <header class="top-macro-bar">
+    <!-- Cell 1: Symbol, Bid, Ask -->
+    <div class="top-cell cell-symbol">
+      <div class="cell-row"><span class="label">SYMBOL:</span> <b class="val-gold">XAU/USD</b></div>
+      <div class="cell-row"><span class="label">BID:</span> <span id="top-bid" class="num val-bid">2,428.45</span></div>
+      <div class="cell-row"><span class="label">ASK:</span> <span id="top-ask" class="num val-ask">2,428.57</span></div>
     </div>
 
-    <div class="header-center">
-      <div class="macro-tickers">
-        <div class="ticker-chip">
-          <span class="ticker-label">DXY</span>
-          <span id="dxy-val" class="ticker-val num">104.25</span>
-          <span id="dxy-chg" class="num chip-down">-0.12%</span>
-        </div>
-        <div class="ticker-chip">
-          <span class="ticker-label">US10Y</span>
-          <span id="us10y-val" class="ticker-val num">4.22%</span>
-          <span id="us10y-chg" class="num chip-up">+0.05%</span>
-        </div>
-      </div>
+    <!-- Cell 2: Spread, Vol, Change -->
+    <div class="top-cell cell-market">
+      <div class="cell-row"><span class="label">SPREAD:</span> <span id="top-spread" class="num">1.2</span></div>
+      <div class="cell-row"><span class="label">VOL:</span> <span id="top-vol" class="val-vol">High</span></div>
+      <div class="cell-row"><span class="label">CHG:</span> <span id="top-chg" class="num chip-up">+0.64%</span></div>
     </div>
 
-    <div class="header-right">
-      <div id="tz-badge" class="ticker-chip" title="User Local Timezone">
-        <span>🌐</span>
-        <span id="tz-label" class="num" style="color: var(--text-primary); font-weight: 600;">UTC+8</span>
-      </div>
+    <!-- Cell 3: Session Status -->
+    <div class="top-cell cell-session">
+      <div class="cell-row"><span class="label">SESSION STATUS</span></div>
+      <div class="cell-row"><span id="top-sess-primary" class="sess-active">● LONDON (Open)</span></div>
+      <div class="cell-row"><span id="top-sess-secondary" class="sess-pre">○ NY (Pre)</span></div>
+    </div>
 
-      <div class="session-chip">
-        <span id="session-dot" class="session-dot dot-london"></span>
-        <span id="session-label" style="font-weight: 700;">LONDON</span>
-        <span id="killzone-label" style="color: var(--text-secondary); font-size: 11px;">[LONDON_OPEN]</span>
-      </div>
+    <!-- Cell 4: ADR 20D Capacity -->
+    <div class="top-cell cell-adr">
+      <div class="cell-row"><span class="label">ADR (20D):</span> $<span id="top-adr-total" class="num">34.20</span></div>
+      <div class="cell-row"><span class="label">TODAY:</span> $<span id="top-adr-used" class="num">21.80</span></div>
+      <div class="cell-row"><span class="label">ADR USED:</span> [<span id="top-adr-pct" class="num">63.7%</span>]</div>
+    </div>
 
-      <div id="news-chip" class="news-alert-chip">
-        <span>⏱️</span>
-        <span id="news-name">US Core CPI</span>
-        <span id="news-timer" class="num" style="font-weight: 700;">03:15:00</span>
-      </div>
+    <!-- Cell 5: Daily Range High - Low -->
+    <div class="top-cell cell-range">
+      <div class="cell-row"><span class="label">DAILY RANGE (H-L)</span></div>
+      <div class="cell-row"><span class="label">High:</span> $<span id="top-day-high" class="num">2,435.10</span></div>
+      <div class="cell-row"><span class="label">Low:</span> $<span id="top-day-low" class="num">2,413.30</span></div>
+    </div>
 
-      <div id="autotrader-chip" class="autotrader-chip active" title="Click to Toggle Auto-Trading on OANDA Practice Account">
-        <span class="autotrader-icon">🤖</span>
-        <span id="autotrader-label">AUTO-TRADER: ON</span>
-        <span id="autotrader-dot" class="autotrader-dot dot-active"></span>
-      </div>
-
-      <button id="btn-export-journal-top" class="btn-export-csv" title="Export Full Trade Journal History as CSV">
-        <span>📥</span> CSV Journal
-      </button>
-
-      <div id="ws-indicator" class="ws-status-indicator" title="WebSocket Connected"></div>
+    <!-- Cell 6: Macro (DXY, US10Y) & Economic News -->
+    <div class="top-cell cell-macro">
+      <div class="cell-row"><span class="label">DXY INDEX:</span> <span id="top-dxy" class="num">104.15</span></div>
+      <div class="cell-row"><span class="label">US10Y:</span> <span id="top-us10y" class="num">4.28%</span></div>
+      <div class="cell-row"><span class="label">NEXT:</span> <span id="top-next-event">CPI</span> (<span id="top-next-time" class="num">13:30 GMT</span>)</div>
     </div>
   </header>
 
-  <!-- 3-COLUMN MAIN DASHBOARD -->
-  <main class="main-layout">
+  <!-- MAIN WORKSPACE: 4-TIMEFRAME 2x2 CHART GRID + RIGHT TECHNICAL SIDEBAR -->
+  <main class="terminal-workspace">
 
-    <!-- LEFT COLUMN: CONFLUENCE & QUANTITATIVE MATRIX -->
-    <aside class="column column-left">
-      <!-- Confluence Score Card -->
-      <div class="card">
-        <div class="card-header">
-          <span>MTF Confluence Bias</span>
-        </div>
-        <div class="card-body">
-          <div id="overall-confluence-banner" class="confluence-banner banner-bullish">
-            +3 BULLISH CONFLUENCE
+    <!-- 2x2 MULTI-TIMEFRAME CHART GRID (M1, M15, H1, H4) -->
+    <section class="quad-chart-grid">
+
+      <!-- TOP-LEFT: M1 TIMEFRAME (Scalp / Execution) -->
+      <div class="chart-box" id="box-m1">
+        <div class="chart-box-header">
+          <div class="chart-header-left">
+            <span class="tf-badge-hdr">M1</span>
+            <span class="chart-role">Scalp / Execution</span>
           </div>
-
-          <div class="tf-matrix-grid">
-            <div class="tf-row">
-              <span class="tf-tag">H1 Macro</span>
-              <span id="h1-badge" class="tf-badge badge-bull">BULLISH (> 200 EMA)</span>
-            </div>
-            <div class="tf-row">
-              <span class="tf-tag">M15 Structure</span>
-              <span id="m15-badge" class="tf-badge badge-bull">BULLISH_VWAP</span>
-            </div>
-            <div class="tf-row">
-              <span class="tf-tag">M5 Execution</span>
-              <span id="m5-badge" class="tf-badge badge-bull">BUY TRIGGER</span>
-            </div>
+          <div class="chart-ohlc num" id="legend-m1">
+            O:<span class="o-val">--</span> H:<span class="h-val">--</span> L:<span class="l-val">--</span> C:<span class="c-val">--</span>
+          </div>
+        </div>
+        <div class="chart-view" id="chart-m1">
+          <div class="chart-floating-hud">
+            <span class="hud-item"><span class="dot-blue">●</span> EMA 9: <b id="pill-m1-ema9" class="num">--</b></span>
+            <span class="hud-item"><span class="dot-gold">●</span> VWAP: <b id="pill-m1-vwap" class="num">--</b></span>
+            <span class="hud-item"><span class="dot-green">●</span> OF: <b id="pill-m1-of" class="num">--</b></span>
           </div>
         </div>
       </div>
 
-      <!-- Quantitative Indicator Matrix with Tactical Interpretations -->
-      <div class="card" style="flex: 1;">
-        <div class="card-header">
-          <span>Indicator Matrix & Analysis</span>
+      <!-- TOP-RIGHT: M15 TIMEFRAME (Intraday Structure) -->
+      <div class="chart-box" id="box-m15">
+        <div class="chart-box-header">
+          <div class="chart-header-left">
+            <span class="tf-badge-hdr">M15</span>
+            <span class="chart-role">Intraday Structure</span>
+          </div>
+          <div class="chart-ohlc num" id="legend-m15">
+            O:<span class="o-val">--</span> H:<span class="h-val">--</span> L:<span class="l-val">--</span> C:<span class="c-val">--</span>
+          </div>
         </div>
-        <div class="card-body">
-          <div class="matrix-card-list">
-            
-            <!-- 1. Session VWAP Value Benchmark -->
-            <div class="matrix-item">
-              <div class="matrix-item-header">
-                <span class="matrix-label">📈 Session VWAP: <span id="matrix-vwap-val" class="num" style="color: var(--blue-accent); font-weight: 700;">--</span></span>
-                <span id="matrix-vwap-badge" class="tf-badge badge-bull">ABOVE VALUE</span>
-              </div>
-              <p id="matrix-vwap-interp" class="matrix-interp-text">Loading VWAP profile...</p>
-            </div>
-
-            <!-- 2. RSI & Momentum Divergence -->
-            <div class="matrix-item">
-              <div class="matrix-item-header">
-                <span class="matrix-label">⚡ RSI (14): <span id="matrix-rsi-val" class="num" style="color: var(--text-primary); font-weight: 700;">--</span></span>
-                <span id="matrix-rsi-badge" class="tf-badge badge-neut">NEUTRAL</span>
-              </div>
-              <p id="matrix-rsi-interp" class="matrix-interp-text">Evaluating momentum regime...</p>
-            </div>
-
-            <!-- 3. Trend Moving Averages (EMA 50 / 200) -->
-            <div class="matrix-item">
-              <div class="matrix-item-header">
-                <span class="matrix-label">📊 Moving Average Trend</span>
-                <span id="matrix-ema-badge" class="tf-badge badge-bull">BULLISH STACK</span>
-              </div>
-              <p id="matrix-ema-interp" class="matrix-interp-text">Price alignment against EMA 50 & EMA 200.</p>
-            </div>
-
-            <!-- 4. Session Liquidity & Sweeps -->
-            <div class="matrix-item">
-              <div class="matrix-item-header">
-                <span class="matrix-label">🎯 Session Liquidity</span>
-                <span id="matrix-sweep-badge" class="tf-badge badge-neut">MONITORING</span>
-              </div>
-              <div style="display: flex; justify-content: space-between; font-size: 10px; color: var(--text-muted); margin-bottom: 2px;">
-                <span>Asia High: <span id="level-asia-high" class="num" style="color: var(--text-primary);">--</span></span>
-                <span>Asia Low: <span id="level-asia-low" class="num" style="color: var(--text-primary);">--</span></span>
-              </div>
-              <p id="matrix-sweep-interp" class="matrix-interp-text">Tracking Asian Range sweeps and liquidity pools.</p>
-            </div>
-
-            <!-- 5. Average Daily Range (ADR) -->
-            <div class="matrix-item">
-              <div class="matrix-item-header">
-                <span class="matrix-label">⏳ Daily Range Capacity</span>
-                <span id="adr-pct-tag" class="num" style="color: var(--gold-accent); font-weight: 700;">54%</span>
-              </div>
-              <div class="adr-meter-wrapper" style="margin: 4px 0;">
-                <div class="adr-bar-container">
-                  <div id="adr-bar-fill" class="adr-bar-fill" style="width: 54%;"></div>
-                </div>
-                <div class="adr-stats" style="font-size: 10px;">
-                  <span>Used: $<span id="adr-used" class="num">--</span></span>
-                  <span>Total ADR: $<span id="adr-total" class="num">--</span></span>
-                </div>
-              </div>
-              <p id="matrix-adr-interp" class="matrix-interp-text">Daily range room for session expansion.</p>
-            </div>
-
-            <!-- 6. Fair Value Gaps (FVG) Imbalance -->
-            <div class="matrix-item">
-              <div class="matrix-item-header">
-                <span class="matrix-label">🧲 M5 Imbalance (FVG)</span>
-              </div>
-              <p id="matrix-fvg-interp" class="matrix-interp-text">No active unmitigated FVG nearby.</p>
-            </div>
-
+        <div class="chart-view" id="chart-m15">
+          <div class="chart-floating-hud">
+            <span class="hud-item"><span class="dot-blue">●</span> EMA 9: <b id="pill-m15-ema9" class="num">--</b></span>
+            <span class="hud-item"><span class="dot-orange">●</span> EMA 21: <b id="pill-m15-ema21" class="num">--</b></span>
+            <span class="hud-item"><span class="dot-muted">●</span> Range: $<b id="pill-m15-range" class="num">--</b></span>
           </div>
         </div>
       </div>
-    </aside>
 
-    <!-- CENTER COLUMN: CLEAN INTERACTIVE CHART (EMA 50 + EMA 200 ONLY) -->
-    <section class="column column-center">
-      <div class="chart-container-card">
-        <div class="chart-toolbar">
-          <div class="tf-switch-group">
-            <button class="tf-btn" data-tf="H1">H1</button>
-            <button class="tf-btn" data-tf="M15">M15</button>
-            <button class="tf-btn active" data-tf="M5">M5</button>
-            <button class="tf-btn" data-tf="M1">M1</button>
+      <!-- BOTTOM-LEFT: H1 TIMEFRAME (Trend / Dynamic S&R) -->
+      <div class="chart-box" id="box-h1">
+        <div class="chart-box-header">
+          <div class="chart-header-left">
+            <span class="tf-badge-hdr">H1</span>
+            <span class="chart-role">Trend / Dynamic S&R</span>
           </div>
-
-          <div class="overlay-group">
-            <button id="toggle-ema50" class="overlay-btn active" style="color: #f0b90b; border-color: rgba(240, 185, 11, 0.5);">EMA 50</button>
-            <button id="toggle-ema200" class="overlay-btn active" style="color: #38bdf8; border-color: rgba(56, 189, 248, 0.5);">EMA 200</button>
+          <div class="chart-ohlc num" id="legend-h1">
+            O:<span class="o-val">--</span> H:<span class="h-val">--</span> L:<span class="l-val">--</span> C:<span class="c-val">--</span>
           </div>
         </div>
-
-        <div id="chart-canvas"></div>
+        <div class="chart-view" id="chart-h1">
+          <div class="chart-floating-hud">
+            <span class="hud-item"><span class="dot-purple">●</span> EMA 50: <b id="pill-h1-ema50" class="num">--</b></span>
+            <span class="hud-item"><span class="dot-white">●</span> EMA 200: <b id="pill-h1-ema200" class="num">--</b></span>
+            <span class="hud-item"><span class="dot-muted">●</span> PP: <b id="pill-h1-pp" class="num">--</b></span>
+            <span class="hud-item">ATR: $<b id="pill-h1-atr" class="num">--</b></span>
+          </div>
+        </div>
       </div>
+
+      <!-- BOTTOM-RIGHT: H4 TIMEFRAME (Macro Bias & Supply/Demand) -->
+      <div class="chart-box" id="box-h4">
+        <div class="chart-box-header">
+          <div class="chart-header-left">
+            <span class="tf-badge-hdr">H4</span>
+            <span class="chart-role">Macro Supply / Demand</span>
+          </div>
+          <div class="chart-ohlc num" id="legend-h4">
+            O:<span class="o-val">--</span> H:<span class="h-val">--</span> L:<span class="l-val">--</span> C:<span class="c-val">--</span>
+          </div>
+        </div>
+        <div class="chart-view" id="chart-h4">
+          <div class="chart-floating-hud">
+            <span class="hud-item"><span class="dot-purple">●</span> EMA 50: <b id="pill-h4-ema50" class="num">--</b></span>
+            <span class="hud-item"><span class="dot-white">●</span> EMA 200: <b id="pill-h4-ema200" class="num">--</b></span>
+            <span class="hud-item"><span class="dot-red">●</span> Sweep: <b id="pill-h4-sweep">--</b></span>
+            <span class="hud-item"><span class="dot-muted">●</span> ATR: $<b id="pill-h4-atr" class="num">--</b></span>
+          </div>
+        </div>
+      </div>
+
     </section>
 
-    <!-- RIGHT COLUMN: AI SETUP SCANNER, TRADE PLAN & LOT SIZER -->
-    <aside class="column column-right">
-      <!-- M5 Candle Countdown & Quick Re-Scan Action -->
-      <div class="candle-timer-card">
-        <div class="timer-top-row">
-          <div class="timer-left">
-            <div id="m5-timer-display" class="timer-digits num">02:45</div>
-            <div class="timer-sub">M5 CANDLE COUNTDOWN</div>
-          </div>
-          <button id="btn-rescan-ai" class="btn-rescan" title="Trigger immediate AI market structure re-evaluation">
-            <span class="btn-icon">⚡</span>
-            <span>Re-Scan AI</span>
-          </button>
+    <!-- RIGHT SIDEBAR: LIVE TECHNICAL INDICATORS -->
+    <aside class="right-technical-sidebar">
+      <div class="sidebar-header">
+        <span>LIVE TECHNICAL INDICATORS</span>
+      </div>
+
+      <!-- 1. MULTI-TF RSI -->
+      <div class="indicator-group">
+        <div class="group-title">[MULTI-TF RSI]</div>
+        <div class="group-content rsi-grid">
+          <div class="rsi-row"><span class="label">M1</span> <span class="sep">:</span> <b id="rsi-m1-val" class="num">68.2</b> <span id="rsi-m1-tag" class="tag-bull">[▲]</span></div>
+          <div class="rsi-row"><span class="label">M15</span> <span class="sep">:</span> <b id="rsi-m15-val" class="num">59.4</b> <span id="rsi-m15-tag" class="tag-bull">[▲]</span></div>
+          <div class="rsi-row"><span class="label">H1</span> <span class="sep">:</span> <b id="rsi-h1-val" class="num">51.0</b> <span id="rsi-h1-tag" class="tag-neut">[─]</span></div>
+          <div class="rsi-row"><span class="label">H4</span> <span class="sep">:</span> <b id="rsi-h4-val" class="num">44.8</b> <span id="rsi-h4-tag" class="tag-bear">[▼]</span></div>
         </div>
       </div>
 
-      <!-- AI Real-Time Analysis & Trade Setup Card -->
-      <div class="card ai-card">
-        <div class="card-header ai-card-header">
-          <div class="ai-header-left">
-            <span class="ai-robot-icon">🤖</span>
-            <span class="ai-title">AI SETUP SCANNER</span>
-          </div>
-          <div class="ai-header-right">
-            <span id="ai-grade-badge" class="tf-badge badge-bull">GRADE_A LONG</span>
-            <span id="ai-confidence-badge" class="ai-conf-tag num">92%</span>
-          </div>
+      <!-- 2. PIVOT POINTS (Classic Standard Floor) -->
+      <div class="indicator-group">
+        <div class="group-title">[PIVOT POINTS]</div>
+        <div class="group-content pivot-grid">
+          <div class="pivot-row"><span class="label">PP</span> <span class="sep">:</span> $<span id="pivot-pp" class="num">2,425.00</span></div>
+          <div class="pivot-row"><span class="label val-bear">R1</span> <span class="sep">:</span> $<span id="pivot-r1" class="num val-bear">2,437.20</span></div>
+          <div class="pivot-row"><span class="label val-bear">R2</span> <span class="sep">:</span> $<span id="pivot-r2" class="num val-bear">2,448.50</span></div>
+          <div class="pivot-row"><span class="label val-bull">S1</span> <span class="sep">:</span> $<span id="pivot-s1" class="num val-bull">2,412.80</span></div>
+          <div class="pivot-row"><span class="label val-bull">S2</span> <span class="sep">:</span> $<span id="pivot-s2" class="num val-bull">2,401.10</span></div>
         </div>
-        <div class="card-body ai-card-body">
-          <!-- Setup Headline -->
-          <div id="ai-headline" class="ai-headline-text">
-            GRADE A LONG: Asian Low Liquidity Purge
-          </div>
+      </div>
 
-          <!-- Institutional Thesis -->
-          <p id="ai-thesis" class="ai-thesis-text">
-            Price swept below the Asian Low ($2,928.00) during London Open, purging sell-side liquidity before printing an impulsive M5 CHoCH above $2,933.00.
-          </p>
-
-          <!-- Order Flow Breakdown List -->
-          <div class="ai-breakdown-box">
-            <div class="ai-box-title">ORDER FLOW CONFLUENCE</div>
-            <ul id="ai-breakdown-list" class="ai-breakdown-list">
-              <li>Asian Range sell-side liquidity purged and rejected at $2,928.00.</li>
-              <li>M5 displacement confirmed structure shift with Bullish FVG retest.</li>
-              <li>Trading above Session VWAP with healthy ADR capacity.</li>
-            </ul>
-          </div>
-
-          <!-- Actionable Execution Levels -->
-          <div class="execution-grid">
-            <div class="exec-cell">
-              <span class="exec-label">Suggested Entry</span>
-              <span id="ai-entry-price" class="exec-val num" style="color: var(--gold-accent);">$2,932.50</span>
-            </div>
-            <div class="exec-cell">
-              <span class="exec-label">Stop Loss</span>
-              <span id="ai-sl-price" class="exec-val num" style="color: var(--bearish-red);">$2,927.50</span>
-            </div>
-            <div class="exec-cell">
-              <span class="exec-label">Target 1 (1:2)</span>
-              <span id="ai-tp1-price" class="exec-val num" style="color: var(--bullish-green);">$2,942.50</span>
-            </div>
-            <div class="exec-cell">
-              <span class="exec-label">Target 2 (Asia High)</span>
-              <span id="ai-tp2-price" class="exec-val num" style="color: var(--blue-accent);">$2,945.00</span>
-            </div>
-          </div>
-
-          <!-- Invalidation Note -->
-          <div id="ai-invalidation-box" class="invalidation-note">
-            ⚠️ <span id="ai-invalidation-text">M5 close below $2,927.50 invalidates bullish order block.</span>
-          </div>
-
-          <!-- Psychology Callout -->
-          <div id="ai-psychology-box" class="psychology-callout">
-            🧠 <span id="ai-psychology-text">Execute at FVG entry with strict 1% risk. Do not chase green candles.</span>
+      <!-- 3. ORDER FLOW PRESSURE -->
+      <div class="indicator-group">
+        <div class="group-title">[ORDER FLOW]</div>
+        <div class="group-content of-grid">
+          <div class="of-row"><span class="label">Buy</span> <span class="sep">:</span> <b id="of-buy-pct" class="num val-bull">61%</b></div>
+          <div class="of-row"><span class="label">Sell</span> <span class="sep">:</span> <b id="of-sell-pct" class="num val-bear">39%</b></div>
+          <div class="of-bar">
+            <div id="of-bar-buy" class="of-bar-fill" style="width: 61%;"></div>
           </div>
         </div>
       </div>
 
-      <!-- Real-Time Alerts & Journal Feed -->
-      <div class="card" style="flex: 1; min-height: 220px;">
-        <div class="card-header" style="justify-content: space-between;">
-          <span>Live Signal & Trade Journal</span>
-          <button id="btn-export-journal" class="btn-mini-export" title="Download CSV Trade Journal">📥 Export CSV</button>
+      <!-- 4. GLOBAL OVERLAY TOGGLES -->
+      <div class="indicator-group">
+        <div class="group-title">[CHART OVERLAYS]</div>
+        <div class="group-content overlay-toggles">
+          <button id="toggle-ema" class="btn-overlay active">EMA Ribbon</button>
+          <button id="toggle-vwap" class="btn-overlay active">VWAP Bands</button>
+          <button id="toggle-bb" class="btn-overlay">Bollinger</button>
+          <button id="toggle-vwma" class="btn-overlay">VWMA (20)</button>
         </div>
-        <div class="card-body" style="padding: 6px;">
-          <div id="alert-feed-list" class="alert-feed-list">
-            <div class="alert-item alert-item-sweep">
-              <div class="alert-time num">SYSTEM READY</div>
-              <div class="alert-msg">Dashboard connected to low-latency market stream.</div>
-            </div>
-          </div>
-        </div>
+      </div>
+
+      <!-- 5. TRADE JOURNAL EXPORT -->
+      <div class="indicator-group group-export">
+        <button id="btn-export-journal" class="btn-export-csv">
+          <span>📥</span> Download CSV Journal
+        </button>
+        <div id="ws-indicator" class="ws-status" title="Live WebSocket Online"></div>
       </div>
     </aside>
 
   </main>
 
-  <script src="/static/js/chart.js?v=20260826_v4"></script>
-  <script src="/static/js/app.js?v=20260826_v4"></script>
+  <!-- Application Scripts -->
+  <script src="/static/js/chart.js?v=2.0.0"></script>
+  <script src="/static/js/app.js?v=2.0.0"></script>
 </body>
 </html>

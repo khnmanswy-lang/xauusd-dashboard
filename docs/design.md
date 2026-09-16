@@ -1,58 +1,64 @@
-# Design System: XAUUSD Real-Time Terminal
+# Design System: XAUUSD Real-Time Terminal (GitHub Primer Dark Style)
 
-## 1. Locked Archetype: Deep Dark Financial Terminal
-* **Aesthetic:** Tactical, clean, Bloomberg/TradingView terminal style.
-* **Density:** High density with clear spatial hierarchy (1px subtle borders, no floating glassmorphism or pastel gradients).
-* **Target Audience:** Active intraday & scalping traders needing split-second clarity.
+## 1. Locked Archetype: GitHub Dark Primer Terminal
+* **Aesthetic:** Clean, utilitarian, developer-centric GitHub Dark UI.
+* **Density:** Crisp 1px `#30363d` borders, `#0d1117` canvas, `#161b22` panels, `#21262d` headers, rounded-md (6px) corners.
+* **Badges & Pills:** GitHub CounterBadge and Label styling (`border: 1px solid`, subtle alpha backgrounds).
+* **Target Audience:** Traders & developers wanting high information density with zero eye strain and zero AI slop.
 
 ---
 
-## 2. Color Palette
+## 2. Color Palette (GitHub Primer Dark)
 
 ```css
 :root {
-  /* Surface & Backgrounds */
-  --bg-app: #0a0e17;            /* Deep obsidian background */
-  --bg-panel: #111722;          /* Card & container panels */
-  --bg-panel-header: #161f2e;   /* Panel headers & widget caps */
-  --border-subtle: #1e293b;     /* 1px structural borders */
-  --border-active: #334155;     /* Highlighted/focused borders */
+  /* Surfaces & Backgrounds (GitHub Primer Dark) */
+  --bg-app: #0d1117;              /* GitHub main canvas default */
+  --bg-panel: #161b22;            /* GitHub elevated panel/card */
+  --bg-panel-header: #21262d;     /* GitHub subheader / table header */
+  --bg-subtle: #1f242c;           /* Hover / inset background */
+  
+  /* Borders (GitHub Primer) */
+  --border-subtle: #30363d;       /* GitHub default 1px border */
+  --border-muted: #21262d;        /* Sub-divider line */
+  --border-active: #58a6ff;       /* GitHub focus / active state */
 
-  /* Asset & Status Colors */
-  --gold-accent: #f0b90b;       /* Gold (XAUUSD) primary brand */
-  --gold-dim: #997819;          /* Secondary gold accents */
-  --bullish-green: #00c076;     /* Bullish / Up ticks / Buys */
-  --bearish-red: #ff4d4f;       /* Bearish / Down ticks / Sells */
-  --neutral-gray: #64748b;      /* Neutral / Inactive states */
-  --alert-yellow: #fbbf24;      /* Warnings / News alerts */
+  /* Semantic & Financial Colors */
+  --gold-accent: #e3b341;         /* GitHub attention yellow / Gold */
+  --gold-dim: #9e6a03;            /* Dark gold border/badge */
+  --bullish-green: #3fb950;       /* GitHub success green */
+  --bullish-green-bg: rgba(46, 160, 67, 0.15);
+  --bearish-red: #f85149;         /* GitHub danger red */
+  --bearish-red-bg: rgba(248, 81, 73, 0.15);
+  --accent-blue: #58a6ff;         /* GitHub link / info blue */
+  --accent-purple: #bc8cff;       /* GitHub purple / secondary */
+  --neutral-gray: #8b949e;        /* GitHub muted gray */
+  --neutral-bg: #21262d;
 
-  /* Text & Typography */
-  --text-primary: #f8fafc;      /* Primary readable text */
-  --text-secondary: #94a3b8;    /* Labels & timestamps */
-  --text-muted: #475569;        /* Disabled & subtle hints */
+  /* Typography Colors */
+  --text-primary: #f0f6fc;        /* Primary heading / crisp readable */
+  --text-secondary: #c9d1d9;      /* Body / metrics text */
+  --text-muted: #8b949e;          /* Muted labels & timestamps */
 }
 ```
 
 ---
 
 ## 3. Typography & Numerical Display
-* **Headings & UI Labels:** `Inter`, `-apple-system`, `system-ui`, sans-serif.
-* **Prices, Timers, Lot Sizes, Indicator Numbers:** `JetBrains Mono`, `Roboto Mono`, monospace (with tabular figures `font-variant-numeric: tabular-nums` to eliminate jitter when live ticks arrive).
+* **Headings & UI Labels:** `-apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji"`.
+* **Numbers, Indicators, Timers, Prices:** `ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace` (`font-variant-numeric: tabular-nums`).
 
 ---
 
 ## 4. UI Layout & Component Grid
-* **Header (48px fixed):**
-  * Ticker badges: Live XAUUSD, Spread, DXY, US10Y.
-  * Active Session tag with pulse indicator (Asia: 🟡, London: 🔵, New York: 🟢).
-  * High-Impact News countdown with warning badge if $< 15\text{m}$.
-* **Main Canvas (3-column responsive grid):**
-  * **Left Column (300px - Indicators & Market State):** Multi-Timeframe Confluence Matrix, Session VWAP levels, EMAs, RSI Divergence badges, ADR Progress Meter, Session Highs/Lows.
-  * **Center Column (Flex 1 - Interactive Chart):** TradingView Lightweight Chart canvas with timeframe switcher (H1, M15, M5), automated FVG boxes (green/red semi-transparent fill), Asian Range high/low shading, and Session VWAP bands.
-  * **Right Column (340px - AI Analysis & Trade Plan):**
-    * **AI Setup Card:** Setup Grade Pill (`GRADE_A` 🟢, `GRADE_B` 🟡), Confidence % meter.
-    * **AI Thesis & Commentary:** Markdown container with crisp monospace trade notes.
-    * **Actionable Execution Card:** Entry, SL, TP1, TP2, RR values in prominent monospace tiles.
-    * **Dynamic Lot Sizer:** Reactive lot size calculator linked to account equity and live ATR.
-    * **Timer & Alert Feed:** M5 candle close countdown gauge and live structure alert log.
+* **Header (44px fixed):**
+  * Breadcrumb style: `octicon` + **XAUUSD** `/` **Multi-Timeframe Terminal**
+  * Ticker badges: Live XAUUSD price, Spread, DXY, US10Y in GitHub pill badges.
+  * Session tag (Asia: 🟡, London: 🔵, NY: 🟢) with commit-badge style pill.
+  * News countdown chip.
+* **Main 3-Column Layout:**
+  * **Left Column (300px):** Multi-Timeframe Confluence Matrix & Indicator Table (EMA, VWAP, Bollinger, RSI, MACD, Stoch RSI, OBV, CMF, VWMA, RVol).
+  * **Center Column (Flex 1):** Lightweight Chart canvas with GitHub-styled tab bar (`M1`, `M5`, `M15`, `H1`, `H4`, `D1`), indicator toggle toolbar (`EMA`, `VWAP`, `BB`, `VWMA`, `FVG/OB`), and bottom volume / oscillator pane.
+  * **Right Column (320px):** Institutional Setup Card, Risk Calculator, and Commit-Log styled Live Signal & Trade Journal.
+
 

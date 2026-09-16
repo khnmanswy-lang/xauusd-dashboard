@@ -209,6 +209,163 @@ def detect_rsi_divergence(
     return None
 
 
+def calculate_bollinger_bands(
+    series: pd.Series,
+    period: int = 20,
+    num_std: float = 2.0
+) -> Tuple[pd.Series, pd.Series, pd.Series, pd.Series]:
+    """
+    Calculate Bollinger Bands (Middle SMA, Upper Band, Lower Band, Bandwidth %).
+    """
+    if len(series) < period or series.empty:
+        empty = pd.Series(index=series.index, dtype=float)
+        return empty, empty, empty, empty
+
+    middle = series.rolling(window=period).mean()
+    std = series.rolling(window=period).std()
+    upper = middle + (num_std * std)
+    lower = middle - (num_std * std)
+    bandwidth_pct = ((upper - lower) / middle.replace(0, 1e-9)) * 100.0
+
+    return middle, upper, lower, bandwidth_pct
+
+
+def calculate_macd(
+    series: pd.Series,
+    fast: int = 12,
+    slow: int = 26,
+    signal: int = 9
+) -> Tuple[pd.Series, pd.Series, pd.Series]:
+    """
+    Calculate Moving Average Convergence Divergence (MACD).
+    Returns (macd_line, signal_line, histogram).
+    """
+    if len(series) < slow or series.empty:
+        empty = pd.Series(index=series.index, dtype=float)
+        return empty, empty, empty
+
+    ema_fast = series.ewm(span=fast, adjust=False).mean()
+    ema_slow = series.ewm(span=slow, adjust=False).mean()
+    macd_line = ema_fast - ema_slow
+    signal_line = macd_line.ewm(span=signal, adjust=False).mean()
+    histogram = macd_line - signal_line
+
+    return macd_line, signal_line, histogram
+
+
+def calculate_stochastic_rsi(
+    series: pd.Series,
+    rsi_period: int = 14,
+    stoch_period: int = 14,
+    k_period: int = 3,
+    d_period: int = 3
+) -> Tuple[pd.Series, pd.Series]:
+    """
+    Calculate Stochastic RSI (%K, %D).
+    """
+    if len(series) < rsi_period + stoch_period:
+        empty = pd.Series(index=series.index, dtype=float)
+        return empty, empty
+
+    rsi = calculate_rsi(series, period=rsi_period)
+    min_rsi = rsi.rolling(window=stoch_period).min()
+    max_rsi = rsi.rolling(window=stoch_period).max()
+    denom = (max_rsi - min_rsi).replace(0, 1e-9)
+
+    stoch_raw = ((rsi - min_rsi) / denom) * 100.0
+    k_line = stoch_raw.rolling(window=k_period).mean()
+    d_line = k_line.rolling(window=d_period).mean()
+
+    return k_line, d_line
+
+
+# ==============================================================================
+# Volume-Based Indicators
+# ==============================================================================
+
+def calculate_obv(df: pd.DataFrame) -> pd.Series:
+    """
+    Calculate On-Balance Volume (OBV).
+    Cumulative volume based on close-to-close directional change.
+    """
+    if df.empty or 'close' not in df.columns or 'volume' not in df.columns:
+        return pd.Series(dtype=float)
+
+    delta = df['close'].diff()
+    direction = np.where(delta > 0, 1.0, np.where(delta < 0, -1.0, 0.0))
+    obv = (pd.Series(direction, index=df.index) * df['volume']).cumsum()
+    return obv
+
+
+def calculate_cmf(df: pd.DataFrame, period: int = 20) -> pd.Series:
+    """
+    Calculate Chaikin Money Flow (CMF).
+    Measures institutional accumulation/distribution over 'period' bars.
+    Returns values between -1.0 (heavy distribution) and +1.0 (heavy accumulation).
+    """
+    if len(df) < period or df.empty:
+        return pd.Series(0.0, index=df.index)
+
+    high = df['high']
+    low = df['low']
+    close = df['close']
+    volume = df['volume']
+
+    hl_range = (high - low).replace(0, 1e-9)
+    # Money Flow Multiplier: [(Close - Low) - (High - Close)] / (High - Low)
+    mfm = ((close - low) - (high - close)) / hl_range
+    mf_volume = mfm * volume
+
+    cmf = mf_volume.rolling(window=period).sum() / volume.rolling(window=period).sum().replace(0, 1e-9)
+    return cmf.clip(lower=-1.0, upper=1.0)
+
+
+def calculate_vwma(df: pd.DataFrame, period: int = 20) -> pd.Series:
+    """
+    Calculate Volume Weighted Moving Average (VWMA).
+    Weights closing price by volume over a rolling window.
+    """
+    if len(df) < period or df.empty:
+        return pd.Series(index=df.index, dtype=float)
+
+    pv = df['close'] * df['volume']
+    vwma = pv.rolling(window=period).sum() / df['volume'].rolling(window=period).sum().replace(0, 1e-9)
+    return vwma
+
+
+def calculate_relative_volume(volume_series: pd.Series, period: int = 20) -> Tuple[pd.Series, float]:
+    """
+    Calculate Relative Volume (RVol) - ratio of current volume to 20-period moving average.
+    Returns (rvol_series, latest_rvol). RVol > 2.0 indicates high volume spike.
+    """
+    if len(volume_series) < 2 or volume_series.empty:
+        empty = pd.Series(1.0, index=volume_series.index)
+        return empty, 1.0
+
+    avg_vol = volume_series.rolling(window=period, min_periods=1).mean().replace(0, 1.0)
+    rvol_series = (volume_series / avg_vol).round(2)
+    latest_rvol = float(rvol_series.iloc[-1]) if not rvol_series.empty else 1.0
+
+    return rvol_series, latest_rvol
+
+
+def calculate_accumulation_distribution(df: pd.DataFrame) -> pd.Series:
+    """
+    Calculate Accumulation/Distribution Line (A/D).
+    """
+    if df.empty or 'high' not in df.columns or 'low' not in df.columns or 'close' not in df.columns:
+        return pd.Series(dtype=float)
+
+    high = df['high']
+    low = df['low']
+    close = df['close']
+    volume = df['volume']
+
+    clv = (((close - low) - (high - close)) / (high - low).replace(0, 1e-9))
+    ad = (clv * volume).cumsum()
+    return ad
+
+
 def resample_candles(df_1m: pd.DataFrame, timeframe_minutes: int) -> pd.DataFrame:
     """
     Resample 1-minute OHLCV candles to target timeframe (e.g. 5, 15, 60 minutes).
@@ -221,7 +378,17 @@ def resample_candles(df_1m: pd.DataFrame, timeframe_minutes: int) -> pd.DataFram
         df['dt'] = pd.to_datetime(df['timestamp'], unit='s', utc=True)
     df = df.set_index('dt')
 
-    rule = f"{timeframe_minutes}min" if timeframe_minutes < 60 else "1h"
+    if timeframe_minutes < 60:
+        rule = f"{timeframe_minutes}min"
+    elif timeframe_minutes == 60:
+        rule = "1h"
+    elif timeframe_minutes == 240:
+        rule = "4h"
+    elif timeframe_minutes == 1440:
+        rule = "1D"
+    else:
+        rule = f"{timeframe_minutes}min"
+
     resampled = df.resample(rule, closed='left', label='left').agg({
         'timestamp': 'first',
         'open': 'first',
@@ -233,3 +400,97 @@ def resample_candles(df_1m: pd.DataFrame, timeframe_minutes: int) -> pd.DataFram
 
     resampled['timestamp'] = resampled['timestamp'].astype(int)
     return resampled.reset_index(drop=True)
+
+
+def calculate_pivot_points(daily_df: pd.DataFrame, fallback_price: float = 2428.50) -> Dict[str, float]:
+    """
+    Calculates Standard Classic Floor Pivot Points (PP, R1, R2, S1, S2)
+    using the previous completed trading day's High, Low, Close.
+    """
+    if daily_df is not None and len(daily_df) >= 2:
+        prev_day = daily_df.iloc[-2]
+        h = float(prev_day['high'])
+        l = float(prev_day['low'])
+        c = float(prev_day['close'])
+    elif daily_df is not None and len(daily_df) == 1:
+        prev_day = daily_df.iloc[-1]
+        h = float(prev_day['high'])
+        l = float(prev_day['low'])
+        c = float(prev_day['close'])
+    else:
+        h = fallback_price + 12.0
+        l = fallback_price - 14.0
+        c = fallback_price
+
+    pp = round((h + l + c) / 3.0, 2)
+    r1 = round(2.0 * pp - l, 2)
+    s1 = round(2.0 * pp - h, 2)
+    r2 = round(pp + (h - l), 2)
+    s2 = round(pp - (h - l), 2)
+
+    return {
+        "pp": pp,
+        "r1": r1,
+        "r2": r2,
+        "s1": s1,
+        "s2": s2,
+        "prev_high": round(h, 2),
+        "prev_low": round(l, 2),
+        "prev_close": round(c, 2)
+    }
+
+
+def calculate_order_flow_delta(candles_1m: List[Candle], lookback: int = 30) -> Dict[str, Any]:
+    """
+    Calculates intraday Buy vs Sell volume pressure and net delta from 1m candles over rolling window.
+    """
+    if not candles_1m:
+        return {
+            "buy_pct": 50,
+            "sell_pct": 50,
+            "delta_lots": 0,
+            "delta_oz": 0.0,
+            "status": "NEUTRAL",
+            "formatted": "+0 oz (50% Buy)"
+        }
+
+    recent = candles_1m[-lookback:]
+    buy_vol = 0.0
+    sell_vol = 0.0
+
+    for c in recent:
+        if c.close >= c.open:
+            buy_vol += c.volume
+        else:
+            sell_vol += c.volume
+
+    total_vol = buy_vol + sell_vol
+    if total_vol <= 0:
+        return {
+            "buy_pct": 50,
+            "sell_pct": 50,
+            "delta_lots": 0,
+            "delta_oz": 0.0,
+            "status": "NEUTRAL",
+            "formatted": "+0 oz (50% Buy)"
+        }
+
+    buy_pct = int(round((buy_vol / total_vol) * 100))
+    sell_pct = 100 - buy_pct
+    delta_raw = buy_vol - sell_vol
+    
+    # Scale crypto PAXG volume units to standard retail ounces/contracts (normalized 1.0 - 50.0 range)
+    delta_oz = round(delta_raw / 10.0, 1) if abs(delta_raw) > 500 else round(delta_raw, 1)
+    delta_lots = int(round(delta_oz))
+
+    status = "BUY_DOMINANT" if buy_pct >= 55 else ("SELL_DOMINANT" if sell_pct >= 55 else "BALANCED")
+    formatted = f"{delta_oz:+.1f} oz ({buy_pct}% Buy)"
+
+    return {
+        "buy_pct": buy_pct,
+        "sell_pct": sell_pct,
+        "delta_lots": delta_lots,
+        "delta_oz": delta_oz,
+        "status": status,
+        "formatted": formatted
+    }

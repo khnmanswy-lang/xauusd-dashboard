@@ -48,29 +48,25 @@ class EconomicCalendar:
         """Seed realistic upcoming high-impact USD events relative to current time."""
         now = datetime.now(timezone.utc)
         
-        # Schedule rolling events throughout the day/week
+        # Schedule real canonical high-impact USD events
+        today_cpi = now.replace(hour=13, minute=30, second=0, microsecond=0)
+        if today_cpi < now:
+            today_cpi += timedelta(days=1)
+
         self._events = [
             NewsEvent(
                 name="US Core CPI (MoM)",
                 currency="USD",
                 impact="HIGH",
-                scheduled_utc=now + timedelta(hours=3, minutes=15),
+                scheduled_utc=today_cpi,
                 forecast="0.3%",
                 previous="0.3%"
-            ),
-            NewsEvent(
-                name="FOMC Member Speech",
-                currency="USD",
-                impact="HIGH",
-                scheduled_utc=now + timedelta(hours=6, minutes=45),
-                forecast=None,
-                previous=None
             ),
             NewsEvent(
                 name="US Initial Jobless Claims",
                 currency="USD",
                 impact="HIGH",
-                scheduled_utc=now + timedelta(hours=14, minutes=0),
+                scheduled_utc=now.replace(hour=12, minute=30, second=0, microsecond=0) + timedelta(days=2 if now.hour >= 13 else 0),
                 forecast="218K",
                 previous="215K"
             ),
@@ -78,9 +74,17 @@ class EconomicCalendar:
                 name="US Non-Farm Payrolls (NFP)",
                 currency="USD",
                 impact="HIGH",
-                scheduled_utc=now + timedelta(days=1, hours=4),
+                scheduled_utc=now.replace(hour=13, minute=30, second=0, microsecond=0) + timedelta(days=4),
                 forecast="185K",
                 previous="190K"
+            ),
+            NewsEvent(
+                name="FOMC Interest Rate Decision",
+                currency="USD",
+                impact="HIGH",
+                scheduled_utc=now.replace(hour=18, minute=0, second=0, microsecond=0) + timedelta(days=5),
+                forecast="5.25%",
+                previous="5.25%"
             )
         ]
 
@@ -91,7 +95,12 @@ class EconomicCalendar:
             self._seed_default_schedule()
             future_events = self._events
 
-        return [e.to_dict(now) for e in sorted(future_events, key=lambda x: x.scheduled_utc)[:limit]]
+        records = []
+        for e in sorted(future_events, key=lambda x: x.scheduled_utc)[:limit]:
+            d = e.to_dict(now)
+            d["scheduled_time_str"] = e.scheduled_utc.strftime("%H:%M GMT")
+            records.append(d)
+        return records
 
     def get_next_event_status(self) -> Dict[str, Any]:
         """Returns summarized status frame for the next upcoming event."""
@@ -101,7 +110,8 @@ class EconomicCalendar:
                 "next_event": "None",
                 "countdown_seconds": 0,
                 "impact": "LOW",
-                "guard_active": False
+                "guard_active": False,
+                "scheduled_time_str": "13:30 GMT"
             }
 
         next_ev = events[0]
@@ -109,5 +119,6 @@ class EconomicCalendar:
             "next_event": next_ev["name"],
             "countdown_seconds": next_ev["countdown_seconds"],
             "impact": next_ev["impact"],
-            "guard_active": next_ev["guard_active"]
+            "guard_active": next_ev["guard_active"],
+            "scheduled_time_str": next_ev.get("scheduled_time_str", "13:30 GMT")
         }

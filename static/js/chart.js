@@ -1,681 +1,487 @@
 /**
- * Clean TradingView Lightweight Charts Manager for XAUUSD Terminal.
- * Displays clean Candlesticks, Volume Sub-pane, EMA 50, EMA 200, and dynamic OHLC legend.
- * All complex quantitative indicators (VWAP, RSI, Structure, ADR) are cleanly organized in the side matrix.
+ * GitHub Primer Dark 4-Timeframe Simultaneous Multi-Chart Grid (M1, M15, H1, H4).
+ * Pure JavaScript, zero external dependencies, ultra-low latency Lightweight Charts.
  */
 
-class DashboardChart {
-  constructor(containerId) {
+function roundNum(val) {
+  return typeof val === 'number' && !isNaN(val) ? Math.round(val * 100) / 100 : null;
+}
+
+/**
+ * Manages an individual Lightweight Chart for a specific timeframe.
+ */
+class SingleTimeframeChart {
+  constructor(timeframe, containerId, legendId) {
+    this.timeframe = timeframe;
     this.container = document.getElementById(containerId);
-    this.currentTimeframe = 'M5';
+    this.legendEl = document.getElementById(legendId);
+
     this.chart = null;
     this.candleSeries = null;
     this.volumeSeries = null;
+
+    // Overlay series
+    this.ema9Series = null;
+    this.ema20Series = null;
     this.ema50Series = null;
     this.ema200Series = null;
+    this.vwmaSeries = null;
 
-    // Visibility toggles (clean: only EMA50 and EMA200 on chart)
-    this.showEma50 = true;
-    this.showEma200 = true;
+    this.vwapSeries = null;
+    this.vwapUpper1Series = null;
+    this.vwapUpper2Series = null;
+    this.vwapLower1Series = null;
+    this.vwapLower2Series = null;
 
-    // Cache of current data
+    this.bbUpperSeries = null;
+    this.bbMiddleSeries = null;
+    this.bbLowerSeries = null;
+
+    // Overlay visibility state
+    this.showEmaRibbon = true;
+    this.showVwap = true;
+    this.showBollinger = false;
+    this.showVwma = false;
+    this.showSmc = true;
+
+    // Cache
     this.candleData = [];
-    this.volumeData = [];
-    this.ema50Data = [];
-    this.ema200Data = [];
     this.priceLines = [];
-    this.setupOverlayEl = null;
-    this.lastActiveTrade = null;
-    this.lastSetup = null;
-    this.lastLivePrice = null;
-
-    // Legend element
-    this.legendEl = null;
 
     this.init();
   }
 
   init() {
-    if (!this.container) return;
+    if (!this.container || typeof LightweightCharts === 'undefined') return;
 
-    this.createLegendElement();
+    const isDark = true;
+    const bg = '#0d1117';
+    const grid = '#21262d';
+    const text = '#8b949e';
 
-    if (typeof LightweightCharts !== 'undefined') {
-      this.initLightweightChart();
-    } else {
-      console.warn("LightweightCharts library not loaded; falling back to canvas.");
-      this.initFallbackCanvas();
-    }
+    this.chart = LightweightCharts.createChart(this.container, {
+      width: this.container.clientWidth || 300,
+      height: this.container.clientHeight || 250,
+      layout: {
+        background: { type: 'solid', color: bg },
+        textColor: text,
+        fontSize: 10,
+        fontFamily: "'SF Pro Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace"
+      },
+      grid: {
+        vertLines: { color: grid, style: LightweightCharts.LineStyle.Dotted },
+        horzLines: { color: grid, style: LightweightCharts.LineStyle.Dotted }
+      },
+      crosshair: {
+        mode: LightweightCharts.CrosshairMode.Normal,
+        vertLine: { color: '#58a6ff', width: 1, style: LightweightCharts.LineStyle.Dashed },
+        horzLine: { color: '#58a6ff', width: 1, style: LightweightCharts.LineStyle.Dashed }
+      },
+      rightPriceScale: {
+        borderColor: '#30363d',
+        autoScale: true,
+        scaleMargins: { top: 0.08, bottom: 0.20 },
+        alignLabels: true
+      },
+      timeScale: {
+        borderColor: '#30363d',
+        timeVisible: true,
+        secondsVisible: false,
+        rightOffset: 12,
+        barSpacing: 6,
+        tickMarkFormatter: (time) => {
+          const d = new Date(time * 1000);
+          const day = String(d.getUTCDate()).padStart(2, '0');
+          const mon = d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
+          const hrs = String(d.getUTCHours()).padStart(2, '0');
+          const min = String(d.getUTCMinutes()).padStart(2, '0');
+          if (hrs === '00' && min === '00') return `${day} ${mon}`;
+          return `${hrs}:${min}`;
+        }
+      }
+    });
 
-    window.addEventListener('resize', () => {
-      if (this.chart) {
+    // 1. Candlestick Series (The ONLY series with right-axis price tag)
+    this.candleSeries = this.chart.addCandlestickSeries({
+      upColor: '#3fb950',
+      downColor: '#f85149',
+      borderUpColor: '#3fb950',
+      borderDownColor: '#f85149',
+      wickUpColor: '#3fb950',
+      wickDownColor: '#f85149',
+      priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
+      lastValueVisible: true,
+      priceLineVisible: true
+    });
+
+    // 2. Volume Series (De-saturated, 18% opacity, completely recedes to background)
+    this.volumeSeries = this.chart.addHistogramSeries({
+      color: 'rgba(110, 118, 129, 0.18)',
+      priceFormat: { type: 'volume' },
+      priceScaleId: '',
+      lastValueVisible: false,
+      priceLineVisible: false,
+      scaleMargins: { top: 0.88, bottom: 0 }
+    });
+
+    // Role-tailored default visibility per timeframe
+    const isM1 = this.timeframe === 'M1';
+    const isM15 = this.timeframe === 'M15';
+    const isH1 = this.timeframe === 'H1';
+    const isH4 = this.timeframe === 'H4';
+
+    // 3. EMA Ribbon - ZERO price scale tags (lastValueVisible: false on all)
+    // EMA 9: Active on M1 (scalp trigger) and M15 (momentum)
+    this.ema9Series = this.chart.addLineSeries({
+      color: 'rgba(88, 166, 255, 0.85)',
+      lineWidth: 1.5,
+      crosshairMarkerVisible: false,
+      lastValueVisible: false,
+      priceLineVisible: false,
+      visible: isM1 || isM15
+    });
+
+    // EMA 21: Active on M15 (intraday trend)
+    this.ema20Series = this.chart.addLineSeries({
+      color: 'rgba(240, 136, 62, 0.85)',
+      lineWidth: 1.5,
+      crosshairMarkerVisible: false,
+      lastValueVisible: false,
+      priceLineVisible: false,
+      visible: isM15
+    });
+
+    // EMA 50: Active on H1 and H4 (intermediate trend regime)
+    this.ema50Series = this.chart.addLineSeries({
+      color: 'rgba(188, 140, 255, 0.85)',
+      lineWidth: 1.5,
+      crosshairMarkerVisible: false,
+      lastValueVisible: false,
+      priceLineVisible: false,
+      visible: isH1 || isH4
+    });
+
+    // EMA 200: Active on H1 and H4 (master institutional trend anchor)
+    this.ema200Series = this.chart.addLineSeries({
+      color: '#ffffff',
+      lineWidth: 2,
+      crosshairMarkerVisible: false,
+      lastValueVisible: false,
+      priceLineVisible: false,
+      visible: isH1 || isH4
+    });
+
+    // 4. VWMA 20 (Off by default)
+    this.vwmaSeries = this.chart.addLineSeries({
+      color: 'rgba(57, 197, 187, 0.60)',
+      lineWidth: 1.5,
+      lineStyle: LightweightCharts.LineStyle.Dashed,
+      crosshairMarkerVisible: false,
+      lastValueVisible: false,
+      priceLineVisible: false,
+      visible: false
+    });
+
+    // 5. Session VWAP (Active on M1) & Bands (Active on M15)
+    this.vwapSeries = this.chart.addLineSeries({
+      color: '#e3b341',
+      lineWidth: 2,
+      crosshairMarkerVisible: false,
+      lastValueVisible: false,
+      priceLineVisible: false,
+      visible: isM1
+    });
+
+    this.vwapUpper1Series = this.chart.addLineSeries({ color: 'rgba(227, 179, 65, 0.20)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dotted, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false, visible: isM15 });
+    this.vwapLower1Series = this.chart.addLineSeries({ color: 'rgba(227, 179, 65, 0.20)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dotted, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false, visible: isM15 });
+    this.vwapUpper2Series = this.chart.addLineSeries({ color: 'rgba(227, 179, 65, 0.35)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false, visible: isM15 });
+    this.vwapLower2Series = this.chart.addLineSeries({ color: 'rgba(227, 179, 65, 0.35)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false, visible: isM15 });
+
+    // 6. Bollinger Bands (Off by default)
+    this.bbUpperSeries = this.chart.addLineSeries({ color: 'rgba(88, 166, 255, 0.25)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, visible: false, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false });
+    this.bbMiddleSeries = this.chart.addLineSeries({ color: 'rgba(88, 166, 255, 0.40)', lineWidth: 1, visible: false, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false });
+    this.bbLowerSeries = this.chart.addLineSeries({ color: 'rgba(88, 166, 255, 0.25)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, visible: false, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false });
+
+    // Crosshair move legend updater
+    this.chart.subscribeCrosshairMove((param) => {
+      if (!param || !param.time || !this.legendEl) return;
+      const bar = param.seriesData.get(this.candleSeries);
+      if (bar) {
+        this.updateLegend(bar.open, bar.high, bar.low, bar.close);
+      }
+    });
+
+    // Resize observer for responsive layout
+    const resizeObs = new ResizeObserver(() => {
+      if (this.chart && this.container) {
         this.chart.applyOptions({
           width: this.container.clientWidth,
           height: this.container.clientHeight
         });
       }
     });
+    resizeObs.observe(this.container);
   }
 
-  createLegendElement() {
-    this.legendEl = document.createElement('div');
-    this.legendEl.className = 'chart-ohlc-legend num';
-    this.legendEl.innerHTML = `
-      <span class="legend-symbol" style="color: var(--gold-accent); font-weight: 700; margin-right: 6px;">XAUUSD</span>
-      <span class="legend-tf" style="color: var(--text-secondary); margin-right: 6px;">M5</span>
-      <span id="legend-time" style="color: var(--text-muted); margin-right: 10px;">--:--</span>
-      <span style="color: var(--text-secondary)">O:</span> <span id="legend-o" style="color: var(--text-primary)">--</span>
-      <span style="color: var(--text-secondary)">H:</span> <span id="legend-h" style="color: var(--text-primary)">--</span>
-      <span style="color: var(--text-secondary)">L:</span> <span id="legend-l" style="color: var(--text-primary)">--</span>
-      <span style="color: var(--text-secondary)">C:</span> <span id="legend-c" style="color: var(--text-primary)">--</span>
-      <span style="color: var(--text-muted); margin-left: 8px;">|</span>
-      <span style="color: #f0b90b; margin-left: 8px;">EMA 50:</span> <span id="legend-ema50" style="color: #f0b90b; font-weight: 600;">--</span>
-      <span style="color: #38bdf8; margin-left: 8px;">EMA 200:</span> <span id="legend-ema200" style="color: #38bdf8; font-weight: 600;">--</span>
-    `;
-    this.container.style.position = 'relative';
-    this.container.appendChild(this.legendEl);
-  }
-
-  updateLegend(candle, e50Val, e200Val) {
-    if (!candle) return;
-    const elTime = document.getElementById('legend-time');
-    const elO = document.getElementById('legend-o');
-    const elH = document.getElementById('legend-h');
-    const elL = document.getElementById('legend-l');
-    const elC = document.getElementById('legend-c');
-    const elE50 = document.getElementById('legend-ema50');
-    const elE200 = document.getElementById('legend-ema200');
-
-    if (elTime && candle.time) {
-      const d = new Date(candle.time * 1000);
-      elTime.textContent = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+  updateLegend(o, h, l, c) {
+    if (!this.legendEl) return;
+    const oEl = this.legendEl.querySelector('.o-val');
+    const hEl = this.legendEl.querySelector('.h-val');
+    const lEl = this.legendEl.querySelector('.l-val');
+    const cEl = this.legendEl.querySelector('.c-val');
+    if (oEl) oEl.textContent = o ? o.toFixed(2) : '--';
+    if (hEl) hEl.textContent = h ? h.toFixed(2) : '--';
+    if (lEl) lEl.textContent = l ? l.toFixed(2) : '--';
+    if (cEl) {
+      cEl.textContent = c ? c.toFixed(2) : '--';
+      cEl.style.color = (c >= o) ? 'var(--bullish-green)' : 'var(--bearish-red)';
     }
-    if (elO) elO.textContent = candle.open ? candle.open.toFixed(2) : '--';
-    if (elH) elH.textContent = candle.high ? candle.high.toFixed(2) : '--';
-    if (elL) elL.textContent = candle.low ? candle.low.toFixed(2) : '--';
-    if (elC) {
-      elC.textContent = candle.close ? candle.close.toFixed(2) : '--';
-      elC.style.color = candle.close >= candle.open ? '#089981' : '#f23645';
+  }
+
+  setData(candles) {
+    if (!this.chart || !candles || candles.length === 0) return;
+
+    this.candleData = [];
+    const cData = [];
+    const vData = [];
+    const ema9 = [];
+    const ema20 = [];
+    const ema50 = [];
+    const ema200 = [];
+    const vwma = [];
+    const vwap = [];
+    const vwapU1 = [];
+    const vwapU2 = [];
+    const vwapL1 = [];
+    const vwapL2 = [];
+    const bbU = [];
+    const bbM = [];
+    const bbL = [];
+
+    for (const c of candles) {
+      const rawT = c.time !== undefined ? c.time : c.timestamp;
+      if (rawT === undefined || rawT === null) continue;
+      const t = typeof rawT === 'string' ? Math.floor(new Date(rawT).getTime() / 1000) : rawT;
+
+      const bar = {
+        time: t,
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+        volume: c.volume || 1.0
+      };
+      this.candleData.push(bar);
+      cData.push({ time: t, open: c.open, high: c.high, low: c.low, close: c.close });
+      vData.push({
+        time: t,
+        value: c.volume || 1.0,
+        color: c.close >= c.open ? 'rgba(63, 185, 80, 0.15)' : 'rgba(248, 81, 73, 0.15)'
+      });
+
+      if (c.ema9 !== undefined && c.ema9 !== null) ema9.push({ time: t, value: c.ema9 });
+      if (c.ema20 !== undefined && c.ema20 !== null) ema20.push({ time: t, value: c.ema20 });
+      if (c.ema50 !== undefined && c.ema50 !== null) ema50.push({ time: t, value: c.ema50 });
+      if (c.ema200 !== undefined && c.ema200 !== null) ema200.push({ time: t, value: c.ema200 });
+      if (c.vwma20 !== undefined && c.vwma20 !== null) vwma.push({ time: t, value: c.vwma20 });
+      if (c.vwap !== undefined && c.vwap !== null) vwap.push({ time: t, value: c.vwap });
+      if (c.vwap_upper_1 !== undefined && c.vwap_upper_1 !== null) vwapU1.push({ time: t, value: c.vwap_upper_1 });
+      if (c.vwap_upper_2 !== undefined && c.vwap_upper_2 !== null) vwapU2.push({ time: t, value: c.vwap_upper_2 });
+      if (c.vwap_lower_1 !== undefined && c.vwap_lower_1 !== null) vwapL1.push({ time: t, value: c.vwap_lower_1 });
+      if (c.vwap_lower_2 !== undefined && c.vwap_lower_2 !== null) vwapL2.push({ time: t, value: c.vwap_lower_2 });
+      if (c.bb_upper !== undefined && c.bb_upper !== null) bbU.push({ time: t, value: c.bb_upper });
+      if (c.bb_middle !== undefined && c.bb_middle !== null) bbM.push({ time: t, value: c.bb_middle });
+      if (c.bb_lower !== undefined && c.bb_lower !== null) bbL.push({ time: t, value: c.bb_lower });
     }
-    if (elE50) elE50.textContent = e50Val ? e50Val.toFixed(2) : '--';
-    if (elE200) elE200.textContent = e200Val ? e200Val.toFixed(2) : '--';
+
+    if (this.candleSeries && cData.length > 0) {
+      this.candleSeries.setData(cData);
+      if (this.volumeSeries) this.volumeSeries.setData(vData);
+      if (this.ema9Series) this.ema9Series.setData(ema9);
+      if (this.ema20Series) this.ema20Series.setData(ema20);
+      if (this.ema50Series) this.ema50Series.setData(ema50);
+      if (this.ema200Series) this.ema200Series.setData(ema200);
+      if (this.vwmaSeries) this.vwmaSeries.setData(vwma);
+      if (this.vwapSeries) this.vwapSeries.setData(vwap);
+      if (this.vwapUpper1Series) this.vwapUpper1Series.setData(vwapU1);
+      if (this.vwapUpper2Series) this.vwapUpper2Series.setData(vwapU2);
+      if (this.vwapLower1Series) this.vwapLower1Series.setData(vwapL1);
+      if (this.vwapLower2Series) this.vwapLower2Series.setData(vwapL2);
+      if (this.bbUpperSeries) this.bbUpperSeries.setData(bbU);
+      if (this.bbMiddleSeries) this.bbMiddleSeries.setData(bbM);
+      if (this.bbLowerSeries) this.bbLowerSeries.setData(bbL);
+
+      const last = this.candleData[this.candleData.length - 1];
+      this.updateLegend(last.open, last.high, last.low, last.close);
+      this.chart.timeScale().fitContent();
+    }
   }
 
-  initLightweightChart() {
-    this.chart = LightweightCharts.createChart(this.container, {
-      width: this.container.clientWidth || 600,
-      height: this.container.clientHeight || 450,
-      layout: {
-        background: { color: '#0a0e17' },
-        textColor: '#94a3b8',
-        fontSize: 11,
-        fontFamily: "'JetBrains Mono', 'Roboto Mono', monospace"
-      },
-      localization: {
-        timeFormatter: (timestamp) => {
-          const d = new Date(timestamp * 1000);
-          return d.toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: false
-          });
-        },
-        dateFormatter: (timestamp) => {
-          const d = new Date(timestamp * 1000);
-          return d.toLocaleDateString();
-        }
-      },
-      grid: {
-        vertLines: { color: 'rgba(30, 41, 59, 0.45)', style: 1 },
-        horzLines: { color: 'rgba(30, 41, 59, 0.45)', style: 1 }
-      },
-      crosshair: {
-        mode: LightweightCharts.CrosshairMode.Normal,
-        vertLine: {
-          color: '#f0b90b',
-          width: 1,
-          style: LightweightCharts.LineStyle.Dashed,
-          labelBackgroundColor: '#161f2e'
-        },
-        horzLine: {
-          color: '#f0b90b',
-          width: 1,
-          style: LightweightCharts.LineStyle.Dashed,
-          labelBackgroundColor: '#161f2e'
-        }
-      },
-      timeScale: {
-        borderColor: '#1e293b',
-        timeVisible: true,
-        secondsVisible: false,
-        rightOffset: 14,
-        barSpacing: 4.5,
-        minBarSpacing: 1.5,
-        tickMarkFormatter: (time) => {
-          const d = new Date(time * 1000);
-          const hours = String(d.getHours()).padStart(2, '0');
-          const mins = String(d.getMinutes()).padStart(2, '0');
-          return `${hours}:${mins}`;
-        }
-      },
-      rightPriceScale: {
-        borderColor: '#1e293b',
-        autoScale: true,
-        scaleMargins: {
-          top: 0.12,
-          bottom: 0.20
-        }
-      }
+  updateCandle(tickPrice, tickVol, timestamp) {
+    if (!this.candleSeries) return;
+
+    const tfSeconds = { 'M1': 60, 'M15': 900, 'H1': 3600, 'H4': 14400 }[this.timeframe] || 60;
+    const nowTs = timestamp || Math.floor(Date.now() / 1000);
+    const barStart = Math.floor(nowTs / tfSeconds) * tfSeconds;
+
+    if (this.candleData.length === 0) {
+      const initialBar = {
+        time: barStart,
+        open: tickPrice,
+        high: tickPrice,
+        low: tickPrice,
+        close: tickPrice,
+        volume: tickVol || 1.0
+      };
+      this.candleData.push(initialBar);
+      this.candleSeries.setData([{ time: barStart, open: tickPrice, high: tickPrice, low: tickPrice, close: tickPrice }]);
+      this.updateLegend(tickPrice, tickPrice, tickPrice, tickPrice);
+      return;
+    }
+
+    const lastBar = this.candleData[this.candleData.length - 1];
+    const lastBarTime = lastBar.time !== undefined ? lastBar.time : lastBar.timestamp;
+
+    if (lastBarTime === barStart) {
+      lastBar.high = Math.max(lastBar.high, tickPrice);
+      lastBar.low = Math.min(lastBar.low, tickPrice);
+      lastBar.close = tickPrice;
+      lastBar.volume = (lastBar.volume || 0) + (tickVol || 1.0);
+    } else if (barStart > lastBarTime) {
+      const newBar = {
+        time: barStart,
+        open: tickPrice,
+        high: tickPrice,
+        low: tickPrice,
+        close: tickPrice,
+        volume: tickVol || 1.0
+      };
+      this.candleData.push(newBar);
+      if (this.candleData.length > 1000) this.candleData.shift();
+    }
+
+    const currentBar = this.candleData[this.candleData.length - 1];
+    const curTime = currentBar.time !== undefined ? currentBar.time : currentBar.timestamp;
+    this.candleSeries.update({
+      time: curTime,
+      open: currentBar.open,
+      high: currentBar.high,
+      low: currentBar.low,
+      close: currentBar.close
     });
-
-    // 1. Volume Sub-Pane (bottom)
-    this.volumeSeries = this.chart.addHistogramSeries({
-      color: 'rgba(0, 192, 118, 0.30)',
-      priceFormat: { type: 'volume' },
-      priceScaleId: '',
-      scaleMargins: {
-        top: 0.84,
-        bottom: 0
-      }
-    });
-
-    // 2. Candlestick Series (TradingView Standard Colors)
-    this.candleSeries = this.chart.addCandlestickSeries({
-      upColor: '#089981',
-      downColor: '#f23645',
-      borderUpColor: '#089981',
-      borderDownColor: '#f23645',
-      wickUpColor: '#089981',
-      wickDownColor: '#f23645'
-    });
-
-    // 3. EMA 50 (Subtle Amber 1px Line)
-    this.ema50Series = this.chart.addLineSeries({
-      color: 'rgba(234, 179, 8, 0.65)',
-      lineWidth: 1,
-      title: 'EMA 50',
-      priceLineVisible: false,
-      crosshairMarkerVisible: false
-    });
-
-    // 4. EMA 200 (Subtle Cool Slate/Blue 1px Line)
-    this.ema200Series = this.chart.addLineSeries({
-      color: 'rgba(56, 189, 248, 0.55)',
-      lineWidth: 1,
-      title: 'EMA 200',
-      priceLineVisible: false,
-      crosshairMarkerVisible: false
-    });
-
-    // Crosshair inspection
-    this.chart.subscribeCrosshairMove((param) => {
-      if (!param || !param.time || !param.seriesData) {
-        if (this.candleData.length > 0) {
-          const lastCandle = this.candleData[this.candleData.length - 1];
-          const lastE50 = this.ema50Data.length > 0 ? this.ema50Data[this.ema50Data.length - 1].value : null;
-          const lastE200 = this.ema200Data.length > 0 ? this.ema200Data[this.ema200Data.length - 1].value : null;
-          this.updateLegend(lastCandle, lastE50, lastE200);
-        }
-        return;
-      }
-
-      const candle = param.seriesData.get(this.candleSeries);
-      const e50 = param.seriesData.get(this.ema50Series);
-      const e200 = param.seriesData.get(this.ema200Series);
-      if (candle) {
-        this.updateLegend(candle, e50 ? e50.value : null, e200 ? e200.value : null);
-      }
-    });
-
-    // Load initial timeframe history
-    this.loadHistory(this.currentTimeframe);
+    if (this.volumeSeries) {
+      this.volumeSeries.update({
+        time: curTime,
+        value: currentBar.volume,
+        color: currentBar.close >= currentBar.open ? 'rgba(63, 185, 80, 0.15)' : 'rgba(248, 81, 73, 0.15)'
+      });
+    }
+    this.updateLegend(currentBar.open, currentBar.high, currentBar.low, currentBar.close);
   }
 
-  async loadHistory(timeframe) {
-    this.currentTimeframe = timeframe;
-    
-    const tfEl = this.legendEl ? this.legendEl.querySelector('.legend-tf') : null;
-    if (tfEl) tfEl.textContent = timeframe;
+  setOverlayVisibility(name, isVisible) {
+    if (name === 'ema') {
+      this.showEmaRibbon = isVisible;
+      if (this.ema9Series) this.ema9Series.applyOptions({ visible: isVisible });
+      if (this.ema20Series) this.ema20Series.applyOptions({ visible: isVisible });
+      if (this.ema50Series) this.ema50Series.applyOptions({ visible: isVisible });
+      if (this.ema200Series) this.ema200Series.applyOptions({ visible: isVisible });
+    } else if (name === 'vwap') {
+      this.showVwap = isVisible;
+      if (this.vwapSeries) this.vwapSeries.applyOptions({ visible: isVisible });
+      if (this.vwapUpper1Series) this.vwapUpper1Series.applyOptions({ visible: isVisible });
+      if (this.vwapUpper2Series) this.vwapUpper2Series.applyOptions({ visible: isVisible });
+      if (this.vwapLower1Series) this.vwapLower1Series.applyOptions({ visible: isVisible });
+      if (this.vwapLower2Series) this.vwapLower2Series.applyOptions({ visible: isVisible });
+    } else if (name === 'bb') {
+      this.showBollinger = isVisible;
+      if (this.bbUpperSeries) this.bbUpperSeries.applyOptions({ visible: isVisible });
+      if (this.bbMiddleSeries) this.bbMiddleSeries.applyOptions({ visible: isVisible });
+      if (this.bbLowerSeries) this.bbLowerSeries.applyOptions({ visible: isVisible });
+    } else if (name === 'vwma') {
+      this.showVwma = isVisible;
+      if (this.vwmaSeries) this.vwmaSeries.applyOptions({ visible: isVisible });
+    } else if (name === 'smc') {
+      this.showSmc = isVisible;
+    }
+  }
+}
 
-    try {
-      const resp = await fetch(`/api/history/${timeframe}`);
-      if (!resp.ok) throw new Error("History fetch error");
-      const candles = await resp.json();
-      
-      if (candles && candles.length > 0) {
-        this.candleData = candles.map(c => ({
-          time: c.time,
-          open: c.open,
-          high: c.high,
-          low: c.low,
-          close: c.close
-        }));
+/**
+ * Coordinates all 4 simultaneous timeframe charts (M1, M15, H1, H4).
+ */
+class MultiTimeframeChartGrid {
+  constructor() {
+    this.charts = {
+      'M1': new SingleTimeframeChart('M1', 'chart-m1', 'legend-m1'),
+      'M15': new SingleTimeframeChart('M15', 'chart-m15', 'legend-m15'),
+      'H1': new SingleTimeframeChart('H1', 'chart-h1', 'legend-h1'),
+      'H4': new SingleTimeframeChart('H4', 'chart-h4', 'legend-h4')
+    };
 
-        this.volumeData = candles.map(c => ({
-          time: c.time,
-          value: c.volume || 50,
-          color: c.close >= c.open ? 'rgba(8, 153, 129, 0.30)' : 'rgba(242, 54, 69, 0.30)'
-        }));
+    this.overlays = {
+      ema: true,
+      vwap: true,
+      bb: false,
+      vwma: false,
+      smc: true
+    };
 
-        // Calculate continuous EMAs for the series
-        this.calculateEmASeries();
+    this.bindGlobalOverlayToggles();
+  }
 
-        if (this.candleSeries && this.volumeSeries) {
-          this.candleSeries.setData(this.candleData);
-          this.volumeSeries.setData(this.volumeData);
-          this.renderEmaSeries();
-          
-          // Apply 2x zoom out and align to live edge
-          this.chart.timeScale().applyOptions({
-            barSpacing: 4.5,
-            rightOffset: 14
-          });
-          this.chart.timeScale().scrollToRealTime();
+  bindGlobalOverlayToggles() {
+    const bindBtn = (id, key) => {
+      const btn = document.getElementById(id);
+      if (!btn) return;
+      btn.addEventListener('click', () => {
+        this.overlays[key] = !this.overlays[key];
+        btn.classList.toggle('active', this.overlays[key]);
+        for (const chart of Object.values(this.charts)) {
+          chart.setOverlayVisibility(key, this.overlays[key]);
+        }
+      });
+    };
 
-          const lastCandle = this.candleData[this.candleData.length - 1];
-          const lastE50 = this.ema50Data.length > 0 ? this.ema50Data[this.ema50Data.length - 1].value : null;
-          const lastE200 = this.ema200Data.length > 0 ? this.ema200Data[this.ema200Data.length - 1].value : null;
-          this.updateLegend(lastCandle, lastE50, lastE200);
+    bindBtn('toggle-ema', 'ema');
+    bindBtn('toggle-vwap', 'vwap');
+    bindBtn('toggle-bb', 'bb');
+    bindBtn('toggle-vwma', 'vwma');
+    bindBtn('toggle-smc', 'smc');
+  }
 
-          // Re-render active trade / setup price lines after chart data reset
-          if (this.lastActiveTrade || this.lastSetup) {
-            this.renderActivePositionOverlay(this.lastActiveTrade, this.lastSetup, this.lastLivePrice);
+  async loadAllHistory() {
+    const tfs = ['M1', 'M15', 'H1', 'H4'];
+    await Promise.all(tfs.map(async (tf) => {
+      try {
+        const res = await fetch(`/api/history/${tf}`);
+        if (res.ok) {
+          const candles = await res.json();
+          if (this.charts[tf]) {
+            this.charts[tf].setData(candles);
           }
         }
+      } catch (e) {
+        console.error(`Failed loading history for ${tf}:`, e);
       }
-    } catch (e) {
-      console.warn("Could not load candle history:", e);
+    }));
+  }
+
+  updateCandle(tickPrice, tickVol, timestamp) {
+    for (const chart of Object.values(this.charts)) {
+      chart.updateCandle(tickPrice, tickVol, timestamp);
     }
   }
 
-  calculateEmASeries() {
-    this.ema50Data = [];
-    this.ema200Data = [];
-    if (this.candleData.length === 0) return;
-
-    const closes = this.candleData.map(c => c.close);
-    const k50 = 2.0 / (50 + 1);
-    const k200 = 2.0 / (200 + 1);
-
-    let prevE50 = closes[0];
-    let prevE200 = closes[0];
-
-    for (let i = 0; i < this.candleData.length; i++) {
-      const c = this.candleData[i];
-      const close = c.close;
-
-      prevE50 = (close * k50) + (prevE50 * (1.0 - k50));
-      prevE200 = (close * k200) + (prevE200 * (1.0 - k200));
-
-      this.ema50Data.push({ time: c.time, value: roundNum(prevE50) });
-      this.ema200Data.push({ time: c.time, value: roundNum(prevE200) });
-    }
-  }
-
-  renderEmaSeries() {
-    if (this.ema50Series) {
-      this.ema50Series.setData(this.showEma50 ? this.ema50Data : []);
-    }
-    if (this.ema200Series) {
-      this.ema200Series.setData(this.showEma200 ? this.ema200Data : []);
-    }
-  }
-
-  updateCandle(liveTick) {
-    if (!liveTick || !this.candleSeries || this.candleData.length === 0) return;
-
-    const price = liveTick.price;
-    const nowTs = liveTick.timestamp || Math.floor(Date.now() / 1000);
-    const last = this.candleData[this.candleData.length - 1];
-
-    const intervalSecs = this.currentTimeframe === 'H1' ? 3600 : (this.currentTimeframe === 'M15' ? 900 : (this.currentTimeframe === 'M1' ? 60 : 300));
-    const bucketTs = nowTs - (nowTs % intervalSecs);
-
-    if (last.time < bucketTs) {
-      // New bar
-      const newCandle = {
-        time: bucketTs,
-        open: price,
-        high: price,
-        low: price,
-        close: price
-      };
-      this.candleData.push(newCandle);
-      this.candleSeries.update(newCandle);
-
-      const newVol = {
-        time: bucketTs,
-        value: 1.0,
-        color: 'rgba(8, 153, 129, 0.30)'
-      };
-      this.volumeData.push(newVol);
-      this.volumeSeries.update(newVol);
-
-      // Incremental EMA calculation
-      const k50 = 2.0 / (50 + 1);
-      const k200 = 2.0 / (200 + 1);
-      const lastE50 = this.ema50Data.length > 0 ? this.ema50Data[this.ema50Data.length - 1].value : price;
-      const lastE200 = this.ema200Data.length > 0 ? this.ema200Data[this.ema200Data.length - 1].value : price;
-
-      const newE50 = roundNum((price * k50) + (lastE50 * (1.0 - k50)));
-      const newE200 = roundNum((price * k200) + (lastE200 * (1.0 - k200)));
-
-      this.ema50Data.push({ time: bucketTs, value: newE50 });
-      this.ema200Data.push({ time: bucketTs, value: newE200 });
-
-      if (this.showEma50 && this.ema50Series) this.ema50Series.update({ time: bucketTs, value: newE50 });
-      if (this.showEma200 && this.ema200Series) this.ema200Series.update({ time: bucketTs, value: newE200 });
-
-      this.updateLegend(newCandle, newE50, newE200);
-    } else {
-      // Update active bar
-      last.high = Math.max(last.high, price);
-      last.low = Math.min(last.low, price);
-      last.close = price;
-      this.candleSeries.update(last);
-
-      const lastVol = this.volumeData[this.volumeData.length - 1];
-      if (lastVol) {
-        lastVol.value = (lastVol.value || 1.0) + 0.5;
-        lastVol.color = last.close >= last.open ? 'rgba(8, 153, 129, 0.30)' : 'rgba(242, 54, 69, 0.30)';
-        this.volumeSeries.update(lastVol);
-      }
-
-      // Update current bar's EMA
-      const k50 = 2.0 / (50 + 1);
-      const k200 = 2.0 / (200 + 1);
-      const prevE50 = this.ema50Data.length > 1 ? this.ema50Data[this.ema50Data.length - 2].value : price;
-      const prevE200 = this.ema200Data.length > 1 ? this.ema200Data[this.ema200Data.length - 2].value : price;
-
-      const currE50 = roundNum((price * k50) + (prevE50 * (1.0 - k50)));
-      const currE200 = roundNum((price * k200) + (prevE200 * (1.0 - k200)));
-
-      if (this.ema50Data.length > 0) this.ema50Data[this.ema50Data.length - 1].value = currE50;
-      if (this.ema200Data.length > 0) this.ema200Data[this.ema200Data.length - 1].value = currE200;
-
-      if (this.showEma50 && this.ema50Series) this.ema50Series.update({ time: last.time, value: currE50 });
-      if (this.showEma200 && this.ema200Series) this.ema200Series.update({ time: last.time, value: currE200 });
-
-      this.updateLegend(last, currE50, currE200);
-    }
-  }
-
-  toggleEma50(enabled) {
-    this.showEma50 = enabled;
-    this.renderEmaSeries();
-  }
-
-  toggleEma200(enabled) {
-    this.showEma200 = enabled;
-    this.renderEmaSeries();
-  }
-
-  // ==========================================================================
-  // Interactive Trade Setup & Live Position Overlay (Lines & HUD)
-  // ==========================================================================
-  renderActivePositionOverlay(activeTrade, setup, currentLivePrice) {
-    this.lastActiveTrade = activeTrade || null;
-    this.lastSetup = setup || null;
-    this.lastLivePrice = currentLivePrice || null;
-
-    if (!this.candleSeries) return;
-
-    // 1. Remove existing price lines
-    if (this.priceLines && this.priceLines.length > 0) {
-      this.priceLines.forEach(pl => {
-        try { this.candleSeries.removePriceLine(pl); } catch (e) {}
-      });
-    }
-    this.priceLines = [];
-
-    // Case A: Real active trade is OPEN on OANDA!
-    if (activeTrade && activeTrade.entry_price) {
-      const entry = activeTrade.entry_price;
-      const sl = activeTrade.stop_loss;
-      const tp = activeTrade.take_profit;
-      const units = activeTrade.units || 0;
-      const isLong = activeTrade.direction === 'BULLISH_LONG' || units > 0;
-      const pnl = activeTrade.unrealized_pl || 0.0;
-      const livePrice = currentLivePrice || entry;
-
-      // Draw Entry Price Line (Gold Solid)
-      const entryLine = this.candleSeries.createPriceLine({
-        price: entry,
-        color: '#f0b90b',
-        lineWidth: 2,
-        lineStyle: LightweightCharts.LineStyle.Solid,
-        axisLabelVisible: true,
-        title: `⚡ OPEN #${activeTrade.id || ''} ($${entry.toFixed(2)})`
-      });
-      this.priceLines.push(entryLine);
-
-      // Draw Stop Loss Line (Red Solid)
-      if (sl) {
-        const slDist = Math.abs(entry - sl);
-        const slLine = this.candleSeries.createPriceLine({
-          price: sl,
-          color: '#f23645',
-          lineWidth: 2,
-          lineStyle: LightweightCharts.LineStyle.Solid,
-          axisLabelVisible: true,
-          title: `⛔ SL $${sl.toFixed(2)} (-$${slDist.toFixed(2)})`
-        });
-        this.priceLines.push(slLine);
-      }
-
-      // Draw Take Profit Line (Emerald Solid)
-      if (tp) {
-        const tpDist = Math.abs(tp - entry);
-        const tpLine = this.candleSeries.createPriceLine({
-          price: tp,
-          color: '#00f090',
-          lineWidth: 2,
-          lineStyle: LightweightCharts.LineStyle.Solid,
-          axisLabelVisible: true,
-          title: `🎯 TP $${tp.toFixed(2)} (+$${tpDist.toFixed(2)})`
-        });
-        this.priceLines.push(tpLine);
-      }
-
-      // Update HUD Overlay Box
-      if (!this.setupOverlayEl) {
-        this.setupOverlayEl = document.createElement('div');
-        this.setupOverlayEl.className = 'chart-setup-overlay num';
-        this.container.appendChild(this.setupOverlayEl);
-      }
-
-      const pnlColor = pnl >= 0 ? 'var(--bullish-green)' : 'var(--bearish-red)';
-      const pnlSign = pnl >= 0 ? '+' : '';
-      const sideText = isLong ? '🟢 ACTIVE LONG' : '🔴 ACTIVE SHORT';
-
-      this.setupOverlayEl.innerHTML = `
-        <div class="setup-overlay-header">
-          <div class="setup-overlay-tag">${sideText} <span style="font-size: 9.5px; color: var(--text-secondary);">[${units} Units]</span></div>
-          <div class="setup-overlay-rr" style="color: ${pnlColor}; font-size: 11px; font-weight: 800;">
-            PnL: ${pnlSign}$${pnl.toFixed(2)}
-          </div>
-        </div>
-        <div class="setup-overlay-grid">
-          <div class="setup-overlay-cell">
-            <span class="setup-overlay-lbl">ENTRY PRICE</span>
-            <span class="setup-overlay-val" style="color: var(--gold-accent);">$${entry.toFixed(2)}</span>
-          </div>
-          <div class="setup-overlay-cell">
-            <span class="setup-overlay-lbl">CURRENT PRICE</span>
-            <span class="setup-overlay-val" style="color: var(--text-primary);">$${livePrice.toFixed(2)}</span>
-          </div>
-          <div class="setup-overlay-cell">
-            <span class="setup-overlay-lbl">STOP LOSS</span>
-            <span class="setup-overlay-val" style="color: var(--bearish-red);">$${sl ? sl.toFixed(2) : '--'}</span>
-          </div>
-          <div class="setup-overlay-cell">
-            <span class="setup-overlay-lbl">TAKE PROFIT</span>
-            <span class="setup-overlay-val" style="color: #00f090;">$${tp ? tp.toFixed(2) : '--'}</span>
-          </div>
-        </div>
-        <div class="setup-rr-visual-bar" title="Position Active Bar">
-          <div class="setup-rr-risk" style="flex: 1;"></div>
-          <div class="setup-rr-reward" style="flex: 2;"></div>
-        </div>
-      `;
-      this.setupOverlayEl.style.display = 'flex';
-      return;
-    }
-
-    // Case B: Planned Setup from AI (when no active trade is open yet)
-    this.renderTradeSetupOverlay(setup);
-  }
-
-  // ==========================================================================
-  // Interactive Trade Setup Overlay (Entry, Stop Loss, Take Profit Rate Lines)
-  // ==========================================================================
-  renderTradeSetupOverlay(setup) {
-    if (!this.candleSeries) return;
-
-    // 1. Remove existing price lines
-    if (this.priceLines && this.priceLines.length > 0) {
-      this.priceLines.forEach(pl => {
-        try { this.candleSeries.removePriceLine(pl); } catch (e) {}
-      });
-    }
-    this.priceLines = [];
-
-    // Check if we have an active execution plan
-    const exec = (setup && setup.execution_plan) ? setup.execution_plan : null;
-    const isPlayable = setup && setup.setup_grade && setup.setup_grade !== 'NO_SETUP' && setup.plan_status !== 'PLAN_REJECTED' && exec && exec.entry && exec.stop_loss;
-
-    if (!isPlayable) {
-      if (this.setupOverlayEl) {
-        this.setupOverlayEl.style.display = 'none';
-      }
-      return;
-    }
-
-    const entry = exec.entry;
-    const sl = exec.stop_loss;
-    const tp1 = exec.take_profit_1;
-    const tp2 = exec.take_profit_2;
-    const isLong = setup.direction === 'BULLISH_LONG';
-    const riskDist = Math.abs(entry - sl);
-    const rewardDist = tp2 ? Math.abs(tp2 - entry) : (tp1 ? Math.abs(tp1 - entry) : riskDist * 2.0);
-    const rrRatio = riskDist > 0 ? (rewardDist / riskDist).toFixed(2) : '2.00';
-
-    // 2. Draw Entry Price Line (Gold Solid Line)
-    const entryLine = this.candleSeries.createPriceLine({
-      price: entry,
-      color: '#f0b90b',
-      lineWidth: 2,
-      lineStyle: LightweightCharts.LineStyle.Solid,
-      axisLabelVisible: true,
-      title: `⚡ ENTRY $${entry.toFixed(2)}`
-    });
-    this.priceLines.push(entryLine);
-
-    // 3. Draw Stop Loss Price Line (Red Solid Risk Boundary)
-    const slLine = this.candleSeries.createPriceLine({
-      price: sl,
-      color: '#f23645',
-      lineWidth: 2,
-      lineStyle: LightweightCharts.LineStyle.Solid,
-      axisLabelVisible: true,
-      title: `⛔ SL $${sl.toFixed(2)} (-$${riskDist.toFixed(2)})`
-    });
-    this.priceLines.push(slLine);
-
-    // 4. Draw Take Profit 1 Price Line (Green Dashed)
-    if (tp1) {
-      const tp1Line = this.candleSeries.createPriceLine({
-        price: tp1,
-        color: '#089981',
-        lineWidth: 1,
-        lineStyle: LightweightCharts.LineStyle.Dashed,
-        axisLabelVisible: true,
-        title: `🎯 TP1 $${tp1.toFixed(2)}`
-      });
-      this.priceLines.push(tp1Line);
-    }
-
-    // 5. Draw Take Profit 2 / Target Price Line (Emerald Solid Target Zone)
-    if (tp2) {
-      const tp2Line = this.candleSeries.createPriceLine({
-        price: tp2,
-        color: '#00f090',
-        lineWidth: 2,
-        lineStyle: LightweightCharts.LineStyle.Solid,
-        axisLabelVisible: true,
-        title: `🎯 TP2 $${tp2.toFixed(2)} (+1:${rrRatio}R)`
-      });
-      this.priceLines.push(tp2Line);
-    }
-
-    // 6. Update Visual Setup DOM Overlay Box on Chart
-    if (!this.setupOverlayEl) {
-      this.setupOverlayEl = document.createElement('div');
-      this.setupOverlayEl.className = 'chart-setup-overlay num';
-      this.container.appendChild(this.setupOverlayEl);
-    }
-
-    const sideBadge = isLong ? '<span style="color: var(--bullish-green)">🟢 LONG SETUP</span>' : '<span style="color: var(--bearish-red)">🔴 SHORT SETUP</span>';
-    const gradeStr = setup.setup_grade ? setup.setup_grade.replace('_', ' ') : 'ACTIVE';
-
-    this.setupOverlayEl.innerHTML = `
-      <div class="setup-overlay-header">
-        <div class="setup-overlay-tag">${sideBadge} <span style="font-size: 9.5px; color: var(--text-secondary);">[${gradeStr}]</span></div>
-        <div class="setup-overlay-rr">R:R 1:${rrRatio}</div>
-      </div>
-      <div class="setup-overlay-grid">
-        <div class="setup-overlay-cell">
-          <span class="setup-overlay-lbl">ENTRY</span>
-          <span class="setup-overlay-val" style="color: var(--gold-accent);">$${entry.toFixed(2)}</span>
-        </div>
-        <div class="setup-overlay-cell">
-          <span class="setup-overlay-lbl">STOP LOSS (Risk)</span>
-          <span class="setup-overlay-val" style="color: var(--bearish-red);">$${sl.toFixed(2)}</span>
-        </div>
-        <div class="setup-overlay-cell">
-          <span class="setup-overlay-lbl">TP1 (1:2)</span>
-          <span class="setup-overlay-val" style="color: var(--bullish-green);">$${tp1 ? tp1.toFixed(2) : '--'}</span>
-        </div>
-        <div class="setup-overlay-cell">
-          <span class="setup-overlay-lbl">TP2 (Target)</span>
-          <span class="setup-overlay-val" style="color: #00f090;">$${tp2 ? tp2.toFixed(2) : '--'}</span>
-        </div>
-      </div>
-      <div class="setup-rr-visual-bar" title="Risk:Reward Ratio Visual Bar">
-        <div class="setup-rr-risk" style="flex: 1;"></div>
-        <div class="setup-rr-reward" style="flex: ${Math.max(1, parseFloat(rrRatio))};"></div>
-      </div>
-    `;
-    this.setupOverlayEl.style.display = 'flex';
-  }
-
-  clearTradeSetupOverlay() {
-    if (this.priceLines && this.priceLines.length > 0) {
-      this.priceLines.forEach(pl => {
-        try { this.candleSeries.removePriceLine(pl); } catch (e) {}
-      });
-      this.priceLines = [];
-    }
-    if (this.setupOverlayEl) {
-      this.setupOverlayEl.style.display = 'none';
-    }
-  }
-
-  initFallbackCanvas() {
-    const canvas = document.createElement('canvas');
-    canvas.width = this.container.clientWidth || 600;
-    canvas.height = this.container.clientHeight || 450;
-    this.container.appendChild(canvas);
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#0a0e17';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = '#f0b90b';
-    ctx.font = '14px monospace';
-    ctx.fillText('⚡ XAUUSD Interactive Terminal Stream Online', 20, 40);
+  renderSetup(setup) {
+    // Optional visual markers on charts
   }
 }
 
-function roundNum(val, dec = 2) {
-  return parseFloat(Number(val).toFixed(dec));
-}
+// Global instance
+window.multiChartGrid = null;
+window.initDashboardCharts = function() {
+  window.multiChartGrid = new MultiTimeframeChartGrid();
+  window.multiChartGrid.loadAllHistory();
+  return window.multiChartGrid;
+};

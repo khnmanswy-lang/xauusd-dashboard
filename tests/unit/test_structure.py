@@ -7,11 +7,14 @@ from datetime import datetime, timezone
 
 from src.core.structure import (
     FairValueGap,
+    OrderBlock,
     SessionLevels,
     get_current_session_info,
     calculate_session_levels,
     detect_liquidity_sweeps,
     detect_fair_value_gaps,
+    detect_order_blocks,
+    detect_break_of_structure,
     calculate_confluence_matrix
 )
 
@@ -128,3 +131,51 @@ def test_calculate_confluence_matrix():
     assert matrix['h1']['bias'] == "BULLISH"
     assert matrix['score_value'] > 0
     assert "BULLISH" in matrix['overall_score']
+
+
+def test_detect_order_blocks():
+    # Sequence with a down candle followed by 2 strong up candles breaking highs
+    candles = [
+        {'timestamp': 1740000000, 'open': 2930.0, 'high': 2932.0, 'low': 2928.0, 'close': 2931.0, 'volume': 100},
+        {'timestamp': 1740000300, 'open': 2931.0, 'high': 2932.0, 'low': 2927.0, 'close': 2928.0, 'volume': 150},  # Bearish OB
+        {'timestamp': 1740000600, 'open': 2928.0, 'high': 2938.0, 'low': 2928.0, 'close': 2936.0, 'volume': 400},  # Impulse up
+        {'timestamp': 1740000900, 'open': 2936.0, 'high': 2945.0, 'low': 2935.0, 'close': 2944.0, 'volume': 500},  # Impulse continuation
+        {'timestamp': 1740001200, 'open': 2944.0, 'high': 2946.0, 'low': 2942.0, 'close': 2945.0, 'volume': 200},
+    ]
+    df = pd.DataFrame(candles)
+    blocks = detect_order_blocks(df, current_price=2945.0)
+
+    assert len(blocks) >= 1
+    assert blocks[0].type == "BULLISH"
+    assert blocks[0].bottom == 2927.0
+    assert blocks[0].top == 2932.0
+
+
+def test_detect_break_of_structure():
+    # 25 candles with prior range 2920 - 2940, and latest candle breaking above 2940
+    data = []
+    for i in range(24):
+        data.append({
+            'timestamp': 1740000000 + i * 300,
+            'open': 2930.0,
+            'high': 2940.0 if i == 5 else 2935.0,
+            'low': 2920.0 if i == 10 else 2925.0,
+            'close': 2930.0,
+            'volume': 100
+        })
+    # Breakout candle
+    data.append({
+        'timestamp': 1740000000 + 24 * 300,
+        'open': 2938.0,
+        'high': 2948.0,
+        'low': 2937.0,
+        'close': 2946.0,
+        'volume': 600
+    })
+    df = pd.DataFrame(data)
+    bos = detect_break_of_structure(df)
+
+    assert bos is not None
+    assert bos['type'] == "BULLISH_BOS"
+    assert bos['level'] == 2940.0
+

@@ -45,7 +45,7 @@ class JournalEntry:
     max_favorable_usd: float = 0.0
     max_adverse_usd: float = 0.0
     confluence_factors: str = ""
-    ai_thesis: str = ""
+    technical_thesis: str = ""
     notes: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
@@ -116,7 +116,7 @@ class TradeJournalManager:
                             max_favorable_usd=float(row.get("max_favorable_usd", 0.0)),
                             max_adverse_usd=float(row.get("max_adverse_usd", 0.0)),
                             confluence_factors=row.get("confluence_factors", ""),
-                            ai_thesis=row.get("ai_thesis", ""),
+                            technical_thesis=row.get("technical_thesis", row.get("ai_thesis", "")),
                             notes=row.get("notes", "")
                         )
                         entries.append(entry)
